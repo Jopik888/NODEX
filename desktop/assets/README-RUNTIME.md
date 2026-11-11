@@ -6,11 +6,11 @@ This directory intentionally contains no executable third-party binaries in the 
 
 | Component | Candidate version | Required staged file(s) | Official source |
 |---|---:|---|---|
-| Node.js | 24.22.2 LTS | `runtime/node.exe` | https://nodejs.org/dist/v24.22.2/win-x64/node.exe |
+| Node.js | 24.22.3 LTS | `runtime/node.exe` | https://nodejs.org/dist/v24.22.3/win-x64/node.exe |
 | PostgreSQL | 17.11 (preferred compatibility candidate for Windows 10/11) | Full EDB binaries distribution under `postgres/` with `bin/`, `lib/`, `share/` | https://www.enterprisedb.com/download-postgresql-binaries |
 | Kubo | 0.43.1 | `ipfs/ipfs.exe` | https://dist.ipfs.tech/kubo/v0.43.1/kubo_v0.43.1_windows-amd64.zip |
 
-Node.js 24.22.2 official Windows x64 archive SHA-256 must be read from the signed `SHASUMS256.txt.asc` published beside the archive and verified before staging. The source archive intentionally does not duplicate a checksum that has not been independently revalidated locally.
+Node.js 24.22.3 is the current pinned LTS security release (2026-11-11), superseding 24.22.2; see https://github.com/nodejs/node/releases/tag/v24.22.3. Its official Windows x64 archive SHA-256 must be read from the signed `SHASUMS256.txt.asc` published beside the archive and verified before staging. The source archive intentionally does not duplicate a checksum that has not been independently revalidated locally.
 For PostgreSQL, download the exact Windows x64 binaries ZIP from EDB and verify the adjacent `.sha256` file or the vendor's published digest. Do not use the EDB installer executable as a substitute for the portable binary ZIP.
 
 For Kubo, retain the release archive, checksum/signature evidence, and license files alongside the extracted `ipfs.exe`. Verify the release using the official Kubo release page and official `dist.ipfs.tech` distribution.
@@ -21,7 +21,7 @@ For Kubo, retain the release archive, checksum/signature evidence, and license f
 2. Stage the Node runtime at `runtime/node.exe`.
 3. Stage Kubo at `ipfs/ipfs.exe`.
 4. Fill `RUNTIME-MANIFEST.json` with the exact downloaded filename, source URL, SHA-256 for the staged executable and source archive, integrity verification results (`VERIFIED` only after actual SHA/signature verification), and license details before building. Windows preflight checks executable hashes and refuses empty/unverified manifest entries.
-5. Build the backend dependencies on Windows x64 using the staged Node 24.22.2 runtime and a committed `package-lock.json`; verify the native `argon2` module loads under that exact runtime.
+5. Build the backend dependencies on Windows x64 using the staged Node 24.22.3 runtime and a committed `package-lock.json`; verify the native `argon2` module loads under that exact runtime.
 6. Build on Windows 10/11 x64 and run the installer/integration checklist. Linux syntax checks are not a substitute.
 
 ## Kubo maintenance risk
