@@ -9,7 +9,7 @@
 - First-run PostgreSQL data initialization in `%APPDATA%/NODEX`, loopback-only PostgreSQL listener, database creation and existing SQL migrations.
 - Kubo repo initialization and loopback-only API/Gateway configuration; Kubo daemon lifecycle.
 - Backend start/health check on `127.0.0.1:3001` and service shutdown on app exit. A single-instance lock prevents two NODEX desktop processes from opening the same PostgreSQL/Kubo repositories.
-- Electron 45.3.0 + electron-builder 26.18.0 (pinned), NSIS and portable packaging targets. Backend and desktop npm lockfiles are committed; the Alpha 1 CI workflow validates clean installs and syntax. Build preflight still fails closed until all pinned runtime binaries, verified checksums and backend production dependencies are staged. Uninstall is configured not to delete app data.
+- Electron 45.3.0 + electron-builder 26.18.0 (pinned), NSIS and portable packaging targets. Backend and desktop npm lockfiles are committed; Windows CI validates clean installs, syntax, audits, backend tests and the native Argon2 module. Runtime manifest hashes and integrity states are checked both by Windows build preflight and again when the desktop services start; preflight also checks Authenticode signatures for PostgreSQL EXE/DLL files. Build preflight still fails closed until every runtime binary, archive digest, signature and backend production dependency is staged and verified. Uninstall is configured not to delete app data.
 
 ## Важные ограничения этой стадии
 
@@ -20,7 +20,8 @@
 5. SMTP в Alpha 1 не настроен по умолчанию. Backend запускается в development-mode с `DEV_RETURN_VERIFICATION_TOKEN=true` для тестовой регистрации. Не использовать эту конфигурацию как публичный production-сервер.
 6. `COOKIE_SECURE=false` допустим только для loopback Alpha 1. LAN-доступ намеренно не включён: backend слушает только 127.0.0.1. До его включения требуется согласованная HTTPS-точка входа, доверие Android-клиента к сертификату и проверенная cross-site cookie/CSRF-модель. Текущий backend использует `SameSite=Lax`; одних CORS origins недостаточно для cookie-аутентификации из Android WebView. В этом репозитории отсутствует нативный Android-проект, поэтому настройка WebView cookie policy / certificate trust ещё не выполнена. Не менять HOST на `0.0.0.0` и не открывать Kubo API/Gateway.
 7. Kubo `/repo/gc` остаётся доступен только локальному процессу/loopback. Не проксировать эту команду в Android.
-8. Stop sequence: backend/Kubo child processes terminate; PostgreSQL is stopped with `pg_ctl -m fast`. User data remains in app userData directory.
+8. Startup fails closed if runtime integrity statuses are not all `VERIFIED`, required archive checksums are absent, an executable hash differs, or a pinned runtime version differs. Stop sequence: backend/Kubo child processes terminate; PostgreSQL is stopped with `pg_ctl -m fast`. User data remains in app userData directory.
+9. Latest Windows CI passes 66 backend tests (66 passed, 0 failed), backend npm audit reports zero vulnerabilities, and native Argon2 loads. Desktop build dependencies currently report six moderate `minimatch` advisories in the Electron Builder dependency tree; no high/critical advisory is reported. Do not apply `npm audit fix --force` because it proposes a major-version change to Electron Builder; resolve with a compatible upstream release before public distribution.
 
 ## Подготовка build-машины
 
