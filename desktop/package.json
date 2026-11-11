@@ -1,0 +1,88 @@
+{
+  "name": "nodex-desktop-alpha",
+  "version": "0.4.7-alpha.1",
+  "private": true,
+  "description": "NODEX Windows desktop alpha shell",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "node preflight.cjs && electron-builder --win nsis portable",
+    "dist:win:nsis": "node preflight.cjs && electron-builder --win nsis",
+    "dist:win:portable": "node preflight.cjs && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "45.3.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.nodex.desktop",
+    "productName": "NODEX",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "service-manager.cjs",
+      "setup.html",
+      "setup-renderer.js",
+      "package.json",
+      "preflight.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "../secure-disk",
+        "to": "frontend",
+        "filter": [
+          "**/*",
+          "!**/.DS_Store"
+        ]
+      },
+      {
+        "from": "../secure-disk-backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/.env",
+          "!**/.env.*",
+          "!**/coverage/**"
+        ]
+      },
+      {
+        "from": "assets/runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "assets/postgres",
+        "to": "postgres"
+      },
+      {
+        "from": "assets/ipfs",
+        "to": "ipfs"
+      },
+      {
+        "from": "assets/RUNTIME-MANIFEST.json",
+        "to": "RUNTIME-MANIFEST.json"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "NODEX-Alpha-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    },
+    "portable": {
+      "artifactName": "NODEX-Alpha-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}

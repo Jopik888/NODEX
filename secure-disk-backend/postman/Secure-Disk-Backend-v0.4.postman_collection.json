@@ -1,0 +1,331 @@
+{
+  "info": {
+    "name": "Secure Disk Backend v0.4 — Auth and Device Regression",
+    "description": "Authentication and device regression workflow for v0.4. Pairing requires WebCrypto device signatures and is tested in the browser flow.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3001/api/v1"
+    },
+    {
+      "key": "testEmail",
+      "value": "postman-test@example.com"
+    },
+    {
+      "key": "testPassword",
+      "value": "ChangeThis-Postman-Password-2026!"
+    },
+    {
+      "key": "csrfToken",
+      "value": ""
+    },
+    {
+      "key": "verificationToken",
+      "value": ""
+    },
+    {
+      "key": "syncRoomId",
+      "value": ""
+    },
+    {
+      "key": "ed25519PublicKey",
+      "value": "YbCyCa+4nJKjHKOuJvxKmeLStCHQYg9hS2meeeNPJ6s="
+    },
+    {
+      "key": "x25519PublicKey",
+      "value": "IerdgTqCuhfsFfwCQQNjw+iHcDIClY9f9CBpyPP/bEw="
+    },
+    {
+      "key": "deviceId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1 - Get CSRF token",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/csrf-token"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('csrfToken', body.csrf_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 - Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\",\n  \"display_name\": \"Postman Test\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/auth/register"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 201', function () { pm.response.to.have.status(201); });",
+              "const body = pm.response.json();",
+              "if (body.dev_verification_token) {",
+              "  pm.collectionVariables.set('verificationToken', body.dev_verification_token);",
+              "  console.log('Development token stored automatically.');",
+              "} else {",
+              "  pm.collectionVariables.unset('verificationToken');",
+              "  console.log('SMTP is enabled: paste the token received by email into collection variable verificationToken before step 3.');",
+              "}",
+              "pm.test('Email verification is required', function () { pm.expect(body.email_verification_required).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 - Verify email",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/auth/verify-email"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Email verified', function () { pm.expect(pm.response.json().email_verified).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"{{testPassword}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/auth/login"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('syncRoomId', body.sync_room_id);",
+              "pm.collectionVariables.set('csrfToken', body.csrf_token);",
+              "pm.test('sync_room_id returned', function () { pm.expect(body.sync_room_id).to.be.a('string').and.not.empty; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 - Current session (me)",
+      "request": {
+        "method": "GET",
+        "url": "{{baseUrl}}/auth/me"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('syncRoomId', body.sync_room_id);",
+              "pm.test('sync_room_id restored', function () { pm.expect(body.sync_room_id).to.be.a('string').and.not.empty; });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 - Register device (pending; proof required)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"device_name\": \"Secure Disk Postman Test\",\n  \"device_type\": \"browser\",\n  \"platform\": \"Postman\",\n  \"app_version\": \"0.3.0\",\n  \"signing_algorithm\": \"Ed25519\",\n  \"encryption_algorithm\": \"X25519\",\n  \"public_key\": \"{{ed25519PublicKey}}\",\n  \"encryption_public_key\": \"{{x25519PublicKey}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": "{{baseUrl}}/devices/register"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200 or 201', function () { pm.expect([200, 201]).to.include(pm.response.code); });",
+              "const body = pm.response.json();",
+              "pm.test('Device id returned', function () { pm.expect(body.device.id).to.be.a('string').and.not.empty; });",
+              "pm.collectionVariables.set('deviceId', body.device.id);",
+              "pm.test('Device awaits proof-of-possession', function () { pm.expect(body.device.status).to.eql('pending'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 - List devices",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/devices"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.test('Device list returned', function () { pm.expect(body.devices).to.be.an('array'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "8 - Refresh session",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/refresh"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "const body = pm.response.json();",
+              "pm.collectionVariables.set('csrfToken', body.csrf_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "9 - Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/auth/logout"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+              "pm.test('Logged out', function () { pm.expect(pm.response.json().logged_out).to.eql(true); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

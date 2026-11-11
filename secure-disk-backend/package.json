@@ -1,0 +1,29 @@
+{
+  "name": "secure-disk-backend",
+  "version": "0.4.6",
+  "private": true,
+  "description": "Control Plane backend for Secure Disk P2P storage platform",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "db:migrate": "node scripts/migrate.js",
+    "check": "node scripts/check-syntax.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.2",
+    "helmet": "^8.3.0",
+    "nodemailer": "^10.3.0",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  }
+}

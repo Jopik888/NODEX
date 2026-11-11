@@ -1,0 +1,459 @@
+openapi: 3.1.0
+info:
+  title: Secure Disk Backend API
+  version: 0.3.0
+  description: "Control Plane API v0.3: account sessions, proof-of-possession device registration, device inventory and revocation."
+servers:
+  - url: http://localhost:3001/api/v1
+    description: Local development
+security: []
+tags:
+  - name: System
+  - name: Auth
+  - name: Devices
+paths:
+  /csrf-token:
+    get:
+      tags: [System]
+      operationId: getCsrfToken
+      summary: Issue or return a CSRF token cookie
+      responses:
+        '200':
+          description: CSRF token returned and set in a readable cookie
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [csrf_token]
+                properties:
+                  csrf_token: { type: string }
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Create a pending account
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 12, maxLength: 128 }
+                display_name: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        '201':
+          description: Account created. In development only, dev_verification_token may be returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user_id, email, status, email_verification_required, message]
+                properties:
+                  user_id: { type: string, format: uuid }
+                  email: { type: string, format: email }
+                  status: { type: string, const: pending_verification }
+                  email_verification_required: { type: boolean, const: true }
+                  message: { type: string }
+                  dev_verification_token: { type: string, description: Development only. Never returned in production. }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      operationId: verifyEmail
+      summary: Verify email address using a one-time token
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [token]
+              properties:
+                token: { type: string, minLength: 30, maxLength: 128 }
+      responses:
+        '200':
+          description: Email verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [email_verified, user_id, email, status, verified_at]
+                properties:
+                  email_verified: { type: boolean, const: true }
+                  user_id: { type: string, format: uuid }
+                  email: { type: string, format: email }
+                  status: { type: string, enum: [pending, active] }
+                  verified_at: { type: string, format: date-time }
+        '410': { $ref: '#/components/responses/Gone' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      operationId: resendVerification
+      summary: Resend email verification message
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: Generic response to avoid email account enumeration
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message]
+                properties:
+                  message: { type: string }
+                  dev_verification_token: { type: string, description: Development only. }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Login with email and password
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+                password: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '200':
+          description: Login successful; sets HttpOnly access and refresh cookies plus readable CSRF cookie
+          headers:
+            Set-Cookie:
+              description: access_token and refresh_token in development; __Host-access and __Host-refresh in production.
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, sync_room_id, csrf_token, session]
+                properties:
+                  user:
+                    type: object
+                    required: [id, email, status]
+                    properties:
+                      id: { type: string, format: uuid }
+                      email: { type: string, format: email }
+                      display_name: { type: [string, 'null'] }
+                      status: { type: string, enum: [pending, active] }
+                  sync_room_id: { type: string, description: Opaque rendezvous label; not an authorization credential. }
+                  csrf_token: { type: string }
+                  session:
+                    type: object
+                    required: [access_expires_in_seconds, refresh_expires_at]
+                    properties:
+                      access_expires_in_seconds: { type: integer, minimum: 60, maximum: 3600 }
+                      refresh_expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '501':
+          description: Account has TOTP enabled; TOTP login is not implemented in v0.1 and is not bypassed.
+  /auth/me:
+    get:
+      tags: [Auth]
+      operationId: getCurrentSession
+      summary: Return the current account and its Trystero sync room identity
+      description: Requires a valid access cookie. Use this after page reload to restore account/session context without exposing an authorization secret in local storage.
+      security:
+        - accessCookie: []
+      responses:
+        '200':
+          description: Current account session
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, sync_room_id]
+                properties:
+                  user: { type: object }
+                  sync_room_id: { type: string, description: Opaque rendezvous label; not an authorization credential. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshSession
+      summary: Rotate access and refresh cookies
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      security:
+        - refreshCookie: []
+      responses:
+        '200':
+          description: Tokens rotated. Refresh expiry remains the session's original absolute expiry.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [user, csrf_token, session]
+                properties:
+                  user: { type: object }
+                  csrf_token: { type: string }
+                  session:
+                    type: object
+                    properties:
+                      access_expires_in_seconds: { type: integer }
+                      refresh_expires_at: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /devices:
+    get:
+      tags: [Devices]
+      operationId: listDevices
+      summary: List devices belonging to the authenticated account
+      security: [{ accessCookie: [] }]
+      responses:
+        '200': { description: Device inventory; public keys and private material are not returned. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /devices/register:
+    post:
+      tags: [Devices]
+      operationId: registerDevice
+      summary: Register the current device public keys as pending until proof of possession
+      description: Requires an active cookie session and session-bound CSRF token. New devices are pending until an Ed25519 challenge is signed. Private keys must never be sent.
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      security:
+        - accessCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [device_name, device_type, signing_algorithm, encryption_algorithm, public_key, encryption_public_key]
+              properties:
+                device_name: { type: string, minLength: 1, maxLength: 80 }
+                device_type: { type: string, enum: [browser, desktop, mobile, nas, server, other] }
+                platform: { type: string, maxLength: 100 }
+                app_version: { type: string, maxLength: 50 }
+                signing_algorithm: { type: string, const: Ed25519 }
+                encryption_algorithm: { type: string, const: X25519 }
+                public_key: { type: string, minLength: 40, maxLength: 48, description: Canonical Base64 of 32 raw Ed25519 public-key bytes. }
+                encryption_public_key: { type: string, minLength: 40, maxLength: 48, description: Canonical Base64 of 32 raw X25519 public-key bytes. }
+      responses:
+        '201':
+          description: New device registered in pending state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceRegistrationResponse' }
+        '200':
+          description: Existing device identity found; a fresh proof challenge is still required
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeviceRegistrationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /devices/{deviceId}/challenge:
+    post:
+      tags: [Devices]
+      operationId: createDeviceChallenge
+      summary: Create a short-lived, session-bound proof-of-possession challenge
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/CsrfHeader'
+      security: [{ accessCookie: [] }]
+      responses:
+        '201': { description: Challenge message and expiry returned; response is not cacheable. }
+        '404': { description: Device not found. }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /devices/{deviceId}/verify:
+    post:
+      tags: [Devices]
+      operationId: verifyDeviceProof
+      summary: Verify Ed25519 proof and bind the current session to the device
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/CsrfHeader'
+      security: [{ accessCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [challenge_id, signature]
+              properties:
+                challenge_id: { type: string, format: uuid }
+                signature: { type: string, description: Canonical Base64 Ed25519 signature (64 bytes). }
+      responses:
+        '200': { description: Proof verified; device activated and session bound. }
+        '401': { description: Signature is invalid. }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { description: Challenge expired or already consumed. }
+  /devices/{deviceId}/history:
+    get:
+      tags: [Devices]
+      operationId: getDeviceHistory
+      summary: Get device lifecycle events and public-key history
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      security: [{ accessCookie: [] }]
+      responses:
+        '200': { description: Device events and public key versions. }
+        '404': { description: Device not found. }
+  /devices/{deviceId}/revoke:
+    post:
+      tags: [Devices]
+      operationId: revokeDevice
+      summary: Revoke a device, its active sessions and device vault envelope
+      parameters:
+        - name: deviceId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/CsrfHeader'
+      security: [{ accessCookie: [] }]
+      responses:
+        '200': { description: Device revoked; associated sessions and device key envelope removed. }
+        '404': { description: Device not found. }
+  /auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Revoke current session and clear cookies
+      parameters:
+        - $ref: '#/components/parameters/CsrfHeader'
+      security:
+        - accessCookie: []
+      responses:
+        '200':
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [logged_out]
+                properties:
+                  logged_out: { type: boolean, const: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  parameters:
+    CsrfHeader:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+  securitySchemes:
+    accessCookie:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Development name. Production uses __Host-access.
+    refreshCookie:
+      type: apiKey
+      in: cookie
+      name: refresh_token
+      description: Development name. Production uses __Host-refresh.
+  responses:
+    Unauthorized:
+      description: Authentication or refresh token is invalid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: CSRF, email verification or account policy error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Account or resource state conflicts with the requested operation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Gone:
+      description: Verification token is expired or already used
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    DeviceRegistrationResponse:
+      type: object
+      required: [created, device]
+      properties:
+        created: { type: boolean }
+        device:
+          type: object
+          required: [id, device_name, device_type, signing_algorithm, encryption_algorithm, signing_key_version, encryption_key_version, status, created_at]
+          properties:
+            id: { type: string, format: uuid }
+            device_name: { type: string }
+            device_type: { type: string }
+            platform: { type: [string, 'null'] }
+            app_version: { type: [string, 'null'] }
+            signing_algorithm: { type: string, const: Ed25519 }
+            encryption_algorithm: { type: string, const: X25519 }
+            signing_key_version: { type: integer }
+            encryption_key_version: { type: integer }
+            status: { type: string, enum: [pending, active] }
+            created_at: { type: string, format: date-time }
+            last_seen_at: { type: [string, 'null'], format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            details: { type: array, items: { type: object } }

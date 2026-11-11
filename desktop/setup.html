@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>NODEX — подготовка Alpha</title>
+  <style>
+    :root{color-scheme:dark;font-family:Segoe UI,Arial,sans-serif;background:#0b1220;color:#e8eef8}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;padding:28px;box-sizing:border-box}
+    main{width:min(720px,100%);background:#131e30;border:1px solid #30415c;border-radius:20px;padding:30px;box-sizing:border-box;box-shadow:0 24px 80px #0008}
+    h1{margin:0 0 8px;font-size:28px}p{color:#aebdd2;line-height:1.55}.state{padding:14px;border-radius:12px;background:#1b2a40;margin:18px 0}
+    ul{padding-left:22px}li{margin:9px 0;color:#d7e1ef;overflow-wrap:anywhere}.muted{color:#91a4bf;font-size:13px}
+    button{border:0;border-radius:10px;padding:12px 18px;background:#4b83e6;color:white;font-weight:600;cursor:pointer;margin:8px 8px 0 0}
+    button.secondary{background:#26364d}button:disabled{opacity:.55;cursor:wait}#result{white-space:pre-wrap;color:#aebdd2}
+  </style>
+</head>
+<body>
+<main>
+  <h1>NODEX Alpha 1</h1>
+  <p>Подготовка локального сервера Windows. Docker не используется. Пользовательские данные будут храниться отдельно от файлов приложения.</p>
+  <div class="state"><strong id="stateTitle">Проверка компонентов</strong><p id="message">Пожалуйста, подождите…</p></div>
+  <h3>Необходимые компоненты дистрибутива</h3>
+  <ul id="missing"></ul>
+  <p class="muted">На данном этапе это диагностическое окно. Оно не скачивает исполняемые файлы и не запускает неизвестные установщики автоматически.</p>
+  <button id="retry">Проверить снова</button>
+  <button id="dataFolder" class="secondary">Открыть папку данных</button>
+  <p id="result"></p>
+</main>
+<script src="setup-renderer.js"></script>
+</body>
+</html>

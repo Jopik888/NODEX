@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "platform": "win32-x64",
+  "components": {
+    "node": {
+      "version": "24.22.2",
+      "source": "https://nodejs.org/dist/v24.22.2/win-x64/node.exe",
+      "file": "runtime/node.exe",
+      "sha256": ""
+    },
+    "postgres": {
+      "version": "17.11",
+      "source": "https://www.enterprisedb.com/download-postgresql-binaries",
+      "file": "postgres/bin/postgres.exe",
+      "sha256": ""
+    },
+    "kubo": {
+      "version": "0.43.1",
+      "source": "https://dist.ipfs.tech/kubo/v0.43.1/kubo_v0.43.1_windows-amd64.zip",
+      "file": "ipfs/ipfs.exe",
+      "sha256": ""
+    }
+  },
+  "archiveSha256": {
+    "postgresBinariesZip": "",
+    "kuboWindowsZip": ""
+  },
+  "integrityVerification": {
+    "nodeShasumsSignature": "PENDING",
+    "postgresArchiveSha256": "PENDING",
+    "kuboArchiveSha256": "PENDING"
+  }
+}

@@ -1,0 +1,1 @@
+Place a complete, compatible PostgreSQL Windows x64 binary distribution here, preserving `bin`, `lib`, and `share`. The manager uses `bin/initdb.exe`, `bin/pg_ctl.exe`, `bin/createdb.exe`, and `share/server`. Record version, license, source and SHA-256.

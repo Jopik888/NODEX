@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NODEX — Distributed Storage</title>
+    <meta name="nodex-api-base" content="http://localhost:3001/api/v1">
+    <meta name="nodex-ipfs-api" content="http://localhost:5001/api/v0">
+    <!-- Legacy secure-disk-api-base is still supported by config.js. -->
+    <script>try { const savedTheme = localStorage.getItem('secureDiskTheme'); document.documentElement.dataset.theme = savedTheme === 'light' ? 'light' : 'dark'; } catch (_) { document.documentElement.dataset.theme = 'dark'; }</script>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+    <div id="authScreen" class="auth-container" style="display: none;">
+        <div class="auth-box">
+            <div class="auth-logo">
+                <svg class="nodex-mark auth-brand-mark" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+                    <path class="mark-hex" d="M24 4.7 40.5 14.3v19.4L24 43.3 7.5 33.7V14.3Z" />
+                    <path class="mark-links" d="M24 4.7v9.4m16.5.2-8.2 4.8m8.2 14.6-8.2-4.8M24 43.3v-9.4m-16.5-.2 8.2-4.8m-8.2-14.6 8.2 4.8m0 0 8.3 4.8 8.3-4.8m-8.3 4.8v9.6" />
+                    <circle class="mark-node" cx="24" cy="4.7" r="2.4" />
+                    <circle class="mark-node" cx="40.5" cy="14.3" r="2.4" />
+                    <circle class="mark-node" cx="40.5" cy="33.7" r="2.4" />
+                    <circle class="mark-node" cx="24" cy="43.3" r="2.4" />
+                    <circle class="mark-node" cx="7.5" cy="33.7" r="2.4" />
+                    <circle class="mark-node" cx="7.5" cy="14.3" r="2.4" />
+                    <circle class="mark-core" cx="24" cy="23.9" r="3.2" />
+                </svg>
+                <span class="auth-brand-word">NODEX</span>
+            </div>
+            <h1>Вход в хранилище</h1>
+            <p class="subtitle">Ваши файлы защищены сквозным шифрованием</p>
+
+            <div class="auth-tabs">
+                <button type="button" class="auth-tab active" data-tab="login">Войти</button>
+                <button type="button" class="auth-tab" data-tab="register">Создать аккаунт</button>
+            </div>
+
+            <div id="authMessage" class="auth-message" role="status" aria-live="polite"></div>
+
+            <div id="tab-login" class="auth-tab-content active">
+                <label class="auth-field-label" for="loginEmailInput">Email</label>
+                <input type="email" id="loginEmailInput" placeholder="name@example.com" autocomplete="username" maxlength="254">
+                <label class="auth-field-label" for="loginPasswordInput">Пароль</label>
+                <input type="password" id="loginPasswordInput" placeholder="Ваш пароль" autocomplete="current-password" maxlength="128">
+                <button type="button" id="loginBtn" class="primary-btn w-100">Войти</button>
+
+                <div id="verificationPanel" class="auth-verify-panel" hidden>
+                    <h3>Подтверждение email</h3>
+                    <p class="hint">Введите одноразовый токен, полученный на указанную почту. Токен не отображается на странице.</p>
+                    <input type="email" id="verificationEmailInput" placeholder="Email аккаунта" autocomplete="email" readonly>
+                    <input type="text" id="verificationTokenInput" placeholder="Токен подтверждения" autocomplete="one-time-code" maxlength="128">
+                    <button type="button" id="verifyEmailBtn" class="success-btn w-100">Подтвердить email</button>
+                    <button type="button" id="resendVerificationBtn" class="secondary-btn w-100 mt-10">Отправить токен повторно</button>
+                </div>
+            </div>
+
+            <div id="tab-register" class="auth-tab-content">
+                <label class="auth-field-label" for="registerNameInput">Имя (необязательно)</label>
+                <input type="text" id="registerNameInput" placeholder="Как к вам обращаться" autocomplete="name" maxlength="80">
+                <label class="auth-field-label" for="registerEmailInput">Email</label>
+                <input type="email" id="registerEmailInput" placeholder="name@example.com" autocomplete="email" maxlength="254">
+                <label class="auth-field-label" for="registerPasswordInput">Пароль</label>
+                <input type="password" id="registerPasswordInput" placeholder="Не менее 12 символов" autocomplete="new-password" minlength="12" maxlength="128">
+                <p class="hint">После регистрации потребуется подтвердить адрес электронной почты.</p>
+                <button type="button" id="registerBtn" class="success-btn w-100">Зарегистрироваться</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appScreen" class="app-container" style="display: none;">
+        <aside class="sidebar" id="appSidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-brand">
+                    <span class="brand-glyph" aria-hidden="true">
+                        <svg class="nodex-mark" viewBox="0 0 48 48" focusable="false">
+                            <path class="mark-hex" d="M24 4.7 40.5 14.3v19.4L24 43.3 7.5 33.7V14.3Z" />
+                            <path class="mark-links" d="M24 4.7v9.4m16.5.2-8.2 4.8m8.2 14.6-8.2-4.8M24 43.3v-9.4m-16.5-.2 8.2-4.8m-8.2-14.6 8.2 4.8m0 0 8.3 4.8 8.3-4.8m-8.3 4.8v9.6" />
+                            <circle class="mark-node" cx="24" cy="4.7" r="2.4" />
+                            <circle class="mark-node" cx="40.5" cy="14.3" r="2.4" />
+                            <circle class="mark-node" cx="40.5" cy="33.7" r="2.4" />
+                            <circle class="mark-node" cx="24" cy="43.3" r="2.4" />
+                            <circle class="mark-node" cx="7.5" cy="33.7" r="2.4" />
+                            <circle class="mark-node" cx="7.5" cy="14.3" r="2.4" />
+                            <circle class="mark-core" cx="24" cy="23.9" r="3.2" />
+                        </svg>
+                    </span>
+                    <span class="brand-name">NODEX</span>
+                </div>
+                <button id="sidebarToggleBtn" class="sidebar-collapse-btn" type="button" aria-label="Свернуть меню" aria-expanded="true" aria-controls="appSidebar" title="Свернуть меню">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="3"></rect><path d="M9 4v16M14 9l-2.5 3 2.5 3"></path></svg>
+                </button>
+            </div>
+            <nav class="nav-menu" aria-label="Основная навигация">
+                <button class="nav-item active" data-tab="my-files" title="Мой диск" aria-label="Мой диск"><span class="icon" aria-hidden="true"><svg class="sidebar-svg sidebar-svg-folder" viewBox="0 0 28 28" focusable="false"><path d="M3.2 8.1A2.6 2.6 0 0 1 5.8 5.5h5.1l2.5 2.6h8.8a2.6 2.6 0 0 1 2.6 2.6v10.1a2.7 2.7 0 0 1-2.7 2.7H5.9a2.7 2.7 0 0 1-2.7-2.7Z" fill="var(--icon-folder-back)" stroke="var(--icon-folder-edge)" stroke-width="1.2" stroke-linejoin="round"/><path d="M3.2 10.3h21.6v2.1H3.2z" fill="var(--icon-folder-accent)"/><path d="M3.2 12.1h21.6l-1.5 8.9a2.6 2.6 0 0 1-2.6 2.2H5.8a2.6 2.6 0 0 1-2.6-2.7Z" fill="var(--icon-folder-front)" stroke="var(--icon-folder-edge)" stroke-width="1.1" stroke-linejoin="round"/><path d="M3.2 12.1h4.1v10.9H5.8a2.6 2.6 0 0 1-2.6-2.7Z" fill="var(--icon-folder-accent)"/></svg></span><span class="nav-label">Мой диск</span></button>
+                <button class="nav-item" data-tab="vault" title="Сейф" aria-label="Сейф"><span class="icon" aria-hidden="true"><svg class="sidebar-svg sidebar-svg-vault" viewBox="0 0 28 28" focusable="false"><path d="M8 12V8.7a6 6 0 0 1 12 0V12" fill="none" stroke="var(--icon-vault-shackle)" stroke-width="2.1" stroke-linecap="round"/><rect x="4.8" y="11" width="18.4" height="13.2" rx="3.2" fill="var(--icon-vault-body)" stroke="var(--icon-vault-edge)" stroke-width="1.3"/><circle cx="14" cy="17.2" r="2.1" fill="var(--icon-vault-key)"/><path d="M14 19v2" stroke="var(--icon-vault-key)" stroke-width="1.7" stroke-linecap="round"/></svg></span><span class="nav-label">Сейф</span></button>
+                <button class="nav-item" data-tab="upload" title="Загрузить" aria-label="Загрузить"><span class="icon" aria-hidden="true"><svg class="sidebar-svg sidebar-svg-transfer" viewBox="0 0 28 28" focusable="false"><path d="M3.5 9h19m-5-5 5 5-5 5M24.5 19h-19m5 5-5-5 5-5" fill="none" stroke="var(--icon-transfer-line)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="3.5" cy="9" r="1.4" fill="var(--icon-transfer-node)"/><circle cx="24.5" cy="19" r="1.4" fill="var(--icon-transfer-node)"/></svg></span><span class="nav-label">Загрузить</span></button>
+                <button class="nav-item" data-tab="rental" title="Аренда сервера" aria-label="Аренда сервера"><span class="icon" aria-hidden="true"><svg class="sidebar-svg sidebar-svg-card" viewBox="0 0 28 28" focusable="false"><rect x="2.8" y="5.3" width="22.4" height="17.4" rx="3.1" fill="var(--icon-card-body)" stroke="var(--icon-card-edge)" stroke-width="1.3"/><path d="M3 10h22" stroke="var(--icon-card-band)" stroke-width="2.1"/><rect x="6" y="15" width="6" height="3.2" rx=".8" fill="var(--icon-card-chip)"/><path d="M16 16.6h4.7" stroke="var(--icon-card-detail)" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="nav-label">Аренда сервера</span></button>
+                <button class="nav-item" data-tab="devices" title="Устройства" aria-label="Устройства"><span class="icon" aria-hidden="true"><svg class="sidebar-svg sidebar-svg-monitor" viewBox="0 0 28 28" focusable="false"><rect x="3" y="3.8" width="22" height="15.4" rx="2.4" fill="var(--icon-monitor-body)" stroke="var(--icon-monitor-edge)" stroke-width="1.4"/><rect x="5.5" y="6.2" width="17" height="10.6" rx="1.1" fill="var(--icon-monitor-screen)"/><path d="M14 19.5v3.1m-5.1 2h10.2" fill="none" stroke="var(--icon-monitor-edge)" stroke-width="1.8" stroke-linecap="round"/><path d="m9 11.5 2.1 2 4.1-4" fill="none" stroke="var(--icon-monitor-check)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="nav-label">Устройства</span></button>
+            </nav>
+            <button class="nav-item sidebar-wallet" data-tab="rental" data-subtab="wallet" title="Кошелёк" aria-label="Кошелёк"><span class="icon" aria-hidden="true"><svg class="sidebar-svg sidebar-svg-wallet" viewBox="0 0 28 28" focusable="false"><circle cx="14" cy="14" r="11" fill="var(--icon-wallet-body)" stroke="var(--icon-wallet-edge)" stroke-width="1.5"/><circle cx="14" cy="14" r="8.2" fill="none" stroke="var(--icon-wallet-ring)" stroke-width=".9"/><text x="14" y="18.2" text-anchor="middle" font-size="12" font-weight="700" font-family="Arial, sans-serif" fill="var(--icon-wallet-symbol)">$</text></svg></span><span class="nav-label">Кошелёк</span></button>
+        </aside>
+
+        <main class="main-content">
+            <div class="top-bar">
+                <div class="header-account" aria-label="Данные профиля">
+                    <div class="header-account-meta">
+                        <span class="workspace-kicker">АККАУНТ NODEX</span>
+                        <strong id="displayAccountKey" class="header-account-email">—</strong>
+                        <span class="header-profile-id">ID профиля: <code id="displayProfileId">—</code></span>
+                    </div>
+                    <button id="copyProfileBtn" class="header-icon-btn" type="button" aria-label="Копировать email" title="Копировать email">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1.5 1.5 0 0 0-1.5-1.5h-9A1.5 1.5 0 0 0 4 5v9A1.5 1.5 0 0 0 5.5 15.5H8"/></svg>
+                    </button>
+                    <button id="headerSettingsBtn" class="header-icon-btn" type="button" aria-label="Открыть настройки" title="Настройки">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Z"/><path d="m19.4 13.4 1.2.9-1.5 2.6-1.5-.6a7.8 7.8 0 0 1-1.7 1l-.2 1.6h-3l-.3-1.6a7.8 7.8 0 0 1-1.7-1l-1.5.6-1.5-2.6 1.2-.9a7.1 7.1 0 0 1 0-2l-1.2-.9 1.5-2.6 1.5.6a7.8 7.8 0 0 1 1.7-1l.3-1.6h3l.2 1.6a7.8 7.8 0 0 1 1.7 1l1.5-.6 1.5 2.6-1.2.9a7.1 7.1 0 0 1 0 2Z"/></svg>
+                    </button>
+                </div>
+                <div class="topbar-actions">
+                    <span id="syncStatus" class="sync-status-label"></span>
+                    <button id="syncBtn" class="primary-btn sync-button" type="button"><span aria-hidden="true">↻</span><span>Синхронизировать</span></button>
+                    <div class="profile-menu-wrap" id="profileMenuWrap">
+                        <button id="profileMenuTrigger" class="topbar-profile-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="profileDropdown">
+                            <span id="topbarAvatar" class="profile-avatar-small"><svg class="profile-avatar-fallback" viewBox="0 0 32 32" aria-hidden="true" focusable="false"><circle cx="16" cy="11" r="5.2" fill="#9CC5FF"/><path d="M5.5 27c.7-5.4 4.8-8.5 10.5-8.5s9.8 3.1 10.5 8.5" fill="#6D9FEA" stroke="#C4DDFF" stroke-width="1.2" stroke-linecap="round"/></svg></span>
+                            <span class="topbar-profile-meta"><strong id="displayAccountName" class="account-name">Без имени</strong><span>Аккаунт</span></span>
+                            <svg class="profile-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                        </button>
+                        <div id="profileDropdown" class="profile-dropdown" role="menu" aria-label="Меню профиля" hidden>
+                            <button id="profileSettingsBtn" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.1a3.9 3.9 0 1 0 0 7.8 3.9 3.9 0 0 0 0-7.8Z"/><path d="m19.4 13.4 1.2.9-1.5 2.6-1.5-.6a7.8 7.8 0 0 1-1.7 1l-.2 1.6h-3l-.3-1.6a7.8 7.8 0 0 1-1.7-1l-1.5.6-1.5-2.6 1.2-.9a7.1 7.1 0 0 1 0-2l-1.2-.9 1.5-2.6 1.5.6a7.8 7.8 0 0 1 1.7-1l.3-1.6h3l.2 1.6a7.8 7.8 0 0 1 1.7 1l1.5-.6 1.5 2.6-1.2.9a7.1 7.1 0 0 1 0 2Z"/></svg><span>Настройки</span></button>
+                            <button id="switchAccountBtn" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 20v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 18.5V20M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7-5h4m-2-2 2 2-2 2"/></svg><span>Сменить аккаунт</span></button>
+                            <div class="profile-dropdown-divider"></div>
+                            <button id="logoutBtn" class="profile-menu-logout" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10M15 16l4-4-4-4m4 4H9"/></svg><span>Выйти</span></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-my-files" class="tab-content active">
+                <div class="section-header drive-section-header">
+                    <div><h2>Мой диск</h2><p class="hint">Файлы, папки и архивы — в одном пространстве.</p></div>
+                    <div class="header-actions">
+                        <button id="exportBtn" class="secondary-btn">📤 Поделиться</button>
+                        <button id="importBtn" class="secondary-btn">📥 Получить доступ</button>
+                        <input type="file" id="importFileInput" accept=".json" style="display: none;">
+                    </div>
+                </div>
+                <div class="drive-toolbar">
+                    <div id="driveBreadcrumbs" class="drive-breadcrumbs" aria-label="Путь к текущей папке"></div>
+                    <div class="drive-toolbar-actions">
+                        <button id="driveNewFolderBtn" class="drive-tool-btn" type="button" title="Новая папка" aria-label="Новая папка"><span class="tool-glyph">＋</span><span>Папка</span></button>
+                        <button id="driveUploadBtn" class="drive-tool-btn drive-tool-primary" type="button" title="Загрузить файлы" aria-label="Загрузить файлы"><span class="tool-glyph">↑</span><span>Файл</span></button>
+                        <button id="driveUploadFolderBtn" class="drive-tool-btn" type="button" title="Загрузить папку" aria-label="Загрузить папку"><span class="tool-glyph">↑</span><span>Папка</span></button>
+                        <button id="driveViewToggleBtn" class="drive-tool-btn drive-view-toggle" type="button" aria-label="Переключить вид" title="Переключить вид списка"><span class="tool-glyph">≡</span><span>Список</span></button>
+                        <input id="driveSearchInput" class="drive-search" type="search" placeholder="Поиск по диску…" autocomplete="off">
+                        <input type="file" id="driveFileInput" multiple hidden>
+                        <input type="file" id="driveFolderInput" webkitdirectory directory multiple hidden>
+                    </div>
+                </div>
+                <div class="drive-selection-row">
+                    <label class="checkbox-label"><input type="checkbox" id="selectAllMyFiles"> Выбрать всё в папке</label>
+                    <div id="myFilesBulkActions" class="bulk-actions" style="display: none;">
+                        <span id="myFilesSelectedCount">Выбрано: 0</span>
+                        <button id="myFilesDownloadSelectedBtn" class="secondary-btn">Скачать</button>
+                        <button id="myFilesShareSelectedBtn" class="secondary-btn" type="button" disabled>Поделиться QR</button>
+                        <button id="myFilesRenameSelectedBtn" class="secondary-btn" type="button" disabled>Переименовать</button>
+                        <button id="myFilesMoveSelectedBtn" class="secondary-btn">Переместить</button>
+                        <button id="myFilesDeleteSelectedBtn" class="danger-btn">Удалить</button>
+                        <button id="myFilesClearSelectionBtn" class="text-btn">Отмена</button>
+                    </div>
+                </div>
+                <div id="filesList" class="files-grid drive-items"></div>
+            </div>
+
+            <div id="tab-vault" class="tab-content">
+                <div class="section-header"><h2>🔒 Сейф</h2></div>
+                <div id="vaultLockedArea" class="vault-lock-box">
+                    <p>Введите локальный PIN-код для открытия интерфейса Сейфа</p>
+                    <input type="password" id="vaultPinInput" placeholder="****" maxlength="4" inputmode="numeric" autocomplete="off" style="text-align:center; font-size: 2rem; letter-spacing: 5px; width: 150px;">
+                    <button id="vaultUnlockBtn" class="primary-btn">Открыть сейф</button>
+                    <p class="hint">PIN блокирует интерфейс, но не является криптографическим ключом. Ключи Сейфа защищаются отдельным VMK и ключом доверенного устройства.</p>
+                    <button id="startPairingBtn" class="secondary-btn" style="display: none;">📷 Сканировать QR доверенного устройства</button>
+                    <div id="vaultPairingMessage" class="hint" role="status" aria-live="polite"></div>
+                </div>
+                <div id="vaultContentArea" style="display: none;">
+                    <div id="vaultBulkActions" class="bulk-actions" style="display: none; margin-bottom: 15px;">
+                        <span id="vaultSelectedCount">Выбрано: 0</span>
+                        <button id="vaultDeleteSelectedBtn" class="danger-btn">🗑 Удалить</button>
+                        <button id="vaultClearSelectionBtn" class="text-btn">Отмена</button>
+                    </div>
+                    <div class="list-controls">
+                        <label class="checkbox-label"><input type="checkbox" id="selectAllVault"> Выбрать все</label>
+                    </div>
+                    <div id="vaultList" class="files-grid"></div>
+                </div>
+            </div>
+
+            <div id="tab-upload" class="tab-content">
+                <div class="section-header upload-section-heading"><div><h2>Загрузить</h2><p class="hint">Добавляйте файлы на свой диск или скачивайте материалы по ключу доступа.</p></div></div>
+                <div class="upload-mode-tabs" role="tablist" aria-label="Режим загрузки">
+                    <button type="button" class="upload-mode-tab active" data-upload-mode="upload" role="tab" aria-selected="true">↑ Загрузить на диск</button>
+                    <button type="button" class="upload-mode-tab" data-upload-mode="download" role="tab" aria-selected="false">↓ Скачать по ключу</button>
+                </div>
+                <section id="uploadModePane" class="upload-mode-pane active" role="tabpanel">
+                    <div class="form-container upload-form-panel">
+                        <h2>Добавить файлы</h2>
+                        <p class="hint">Выберите файлы или целую папку. Перед отправкой содержимое шифруется на этом устройстве.</p>
+                        <div id="dropZone" class="drop-zone"><div class="drop-icon">☁</div><p>Перетащите файлы или папки сюда</p><span>или выберите источник ниже</span></div>
+                        <input type="file" id="fileInput" multiple style="display: none;">
+                        <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
+                        <div class="upload-source-actions">
+                            <button type="button" onclick="document.getElementById('fileInput').click()" class="secondary-btn">Выбрать файлы</button>
+                            <button type="button" onclick="document.getElementById('folderInput').click()" class="secondary-btn">Выбрать папку</button>
+                        </div>
+                        <div class="form-group upload-destination" style="margin-top:20px;">
+                            <label>Куда сохранять:</label>
+                            <label class="checkbox-label"><input type="radio" name="uploadDestination" value="my" checked> Мой диск</label>
+                            <label class="checkbox-label"><input type="radio" name="uploadDestination" value="vault"> ◈ В Сейф</label>
+                        </div>
+                        <div id="uploadProgressContainer" class="progress-container">
+                            <div id="uploadQueueStatus" class="progress-text" style="font-weight:600; color:var(--primary);"></div>
+                            <div class="progress-bar"><div id="uploadProgressFill" class="progress-fill"></div></div>
+                            <div id="uploadProgressText" class="progress-text">0%</div>
+                        </div>
+                        <div id="uploadResult" class="result-box"></div>
+                    </div>
+                </section>
+                <section id="tab-download" class="upload-mode-pane" role="tabpanel" hidden>
+                    <div class="form-container upload-form-panel download-form-panel">
+                        <h2>Скачать по ключу доступа</h2>
+                        <p class="hint">Вставьте CID и секретный ключ, полученные от отправителя.</p>
+                        <div class="form-group"><label for="downloadCid">Код файла (CID)</label><input type="text" id="downloadCid" placeholder="Qm..."></div>
+                        <div class="form-group"><label for="downloadKey">Секретный ключ</label><input type="text" id="downloadKey" placeholder="Ключ для расшифровки" autocomplete="off"></div>
+                        <div class="download-actions">
+                            <button id="downloadDeviceBtn" class="secondary-btn w-100">Скачать на устройство</button>
+                            <button id="downloadDiskBtn" class="primary-btn w-100">Скачать в мой диск</button>
+                        </div>
+                        <div id="downloadProgressContainer" class="progress-container">
+                            <div class="progress-bar"><div id="downloadProgressFill" class="progress-fill"></div></div>
+                            <div id="downloadProgressText" class="progress-text">0%</div>
+                        </div>
+                        <div id="downloadResult" class="result-box"></div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="tab-devices" class="tab-content">
+                <div class="section-header">
+                    <div><h2>🖥️ Доверенные устройства</h2><p class="hint">Управление устройствами, которые имеют доступ к аккаунту NODEX.</p></div>
+                    <div class="device-actions device-pairing-actions">
+                        <button id="refreshDevicesBtn" class="secondary-btn" type="button">↻ Обновить</button>
+                        <button id="showPairingQRBtn" class="secondary-btn" type="button">▦ Показать QR для нового устройства</button>
+                        <button id="scanPairingBtn" class="primary-btn" type="button">📷 Сканировать QR</button>
+                    </div>
+                </div>
+                <p class="device-pairing-help hint">На доверенном устройстве разблокируйте Сейф и нажмите «Показать QR для нового устройства». На новом устройстве войдите в тот же аккаунт и выберите «Сканировать QR».</p>
+                <p id="pairingQrAvailability" class="hint" role="status" aria-live="polite"></p>
+                <div id="devicesSecurityNotice" class="device-security-notice">Новое устройство становится доверенным только после криптографического подтверждения приватного ключа. Отзыв устройства завершает связанные с ним сессии и удаляет его зашифрованную копию ключа сейфа.</div>
+                <div id="devicesMessage" class="hint" role="status" aria-live="polite"></div>
+                <div id="devicesList" class="devices-list"></div>
+            </div>
+
+            <div id="tab-rental" class="tab-content">
+                <div class="section-header"><h2>💳 Аренда сервера</h2></div>
+                <div class="rental-tabs">
+                    <button class="rental-tab active" data-rtab="provider">📦 Сдать место</button>
+                    <button class="rental-tab" data-rtab="renter">💼 Купить место</button>
+                </div>
+                <div id="rental-provider" class="rental-pane active"><div class="form-container"><h3>Сдайте дисковое пространство</h3><p class="hint">В разработке.</p></div></div>
+                <div id="rental-renter" class="rental-pane"><div class="form-container"><h3>Арендовать P2P-реплики</h3><p class="hint">В разработке.</p></div></div>
+                <div id="rental-wallet" class="rental-pane"><div class="form-container"><h3>👛 Крипто-кошелёк</h3><p class="hint">В разработке.</p></div></div>
+            </div>
+        </main>
+    </div>
+
+    <div id="driveMoveModal" class="modal" style="display: none;">
+        <div class="modal-content drive-dialog">
+            <h3>Переместить элементы</h3>
+            <p class="hint">Выберите папку назначения на Моем диске.</p>
+            <label for="driveMoveDestination">Папка назначения</label>
+            <select id="driveMoveDestination"></select>
+            <div class="modal-actions">
+                <button id="driveMoveConfirmBtn" class="primary-btn" style="flex:1;">Переместить</button>
+                <button id="driveMoveCancelBtn" class="secondary-btn" style="flex:1;">Отмена</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="zipBrowserModal" class="modal" style="display: none;">
+        <div class="modal-content zip-browser-dialog">
+            <div class="zip-browser-head">
+                <div><h3 id="zipBrowserTitle">Архив</h3><p id="zipBrowserDescription" class="hint">Просмотр содержимого ZIP</p></div>
+                <button id="zipBrowserCloseBtn" class="icon-close-btn" aria-label="Закрыть">✕</button>
+            </div>
+            <div id="zipBrowserBreadcrumbs" class="drive-breadcrumbs zip-breadcrumbs"></div>
+            <div id="zipBrowserList" class="zip-browser-list"></div>
+        </div>
+    </div>
+
+    <div id="qrModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Поделиться файлом</h3>
+            <div id="qrContainer" class="qr-container"></div>
+            <button onclick="document.getElementById('qrModal').style.display='none'" class="secondary-btn w-100">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="pairingQrModal" class="modal" style="display: none;">
+        <div class="modal-content pairing-modal">
+            <h3>Показать QR для нового устройства</h3>
+            <p class="hint">Это доверенное устройство. Покажите код новому устройству. На нём нужно войти в тот же аккаунт NODEX и выбрать «Сканировать QR». Приглашение одноразовое и действует 5 минут.</p>
+            <div id="pairingQrContainer" class="qr-container"></div>
+            <div id="pairingQrStatus" class="pairing-status" role="status" aria-live="polite">Создаём приглашение…</div>
+            <button id="approvePairingBtn" class="primary-btn w-100" type="button" disabled hidden>Передать ключ Сейфа</button>
+            <button id="cancelPairingBtn" class="secondary-btn w-100" type="button">Отменить приглашение</button>
+        </div>
+    </div>
+
+    <div id="pairingScannerModal" class="modal" style="display: none;">
+        <div class="modal-content pairing-modal">
+            <h3>Сканировать QR доверенного устройства</h3>
+            <p class="hint">Это новое устройство. Войдите в тот же аккаунт, что и на доверенном устройстве, затем наведите камеру на показанный там QR-код. После сканирования ожидайте подтверждения передачи ключа.</p>
+            <div id="pairingQrReader" class="pairing-qr-reader"></div>
+            <div class="form-group pairing-manual-entry">
+                <label for="pairingQrManualInput">Или вставьте содержимое QR-кода</label>
+                <textarea id="pairingQrManualInput" rows="3" maxlength="1024" autocomplete="off"></textarea>
+                <button id="pairingUseManualQrBtn" class="secondary-btn" type="button">Проверить код</button>
+            </div>
+            <div id="pairingTargetInfo" class="pairing-status" role="status" aria-live="polite"></div>
+            <button id="closePairingScannerBtn" class="secondary-btn w-100" type="button">Закрыть</button>
+        </div>
+    </div>
+
+    <div id="profileModal" class="modal" style="display: none;">
+        <div class="modal-content profile-modal">
+            <div class="settings-modal-heading"><div><h3>Настройки</h3><p class="hint">Профиль, внешний вид и доступ к Сейфу</p></div><button id="settingsCloseBtn" class="icon-close-btn" type="button" aria-label="Закрыть настройки">✕</button></div>
+            <section class="settings-section">
+                <div class="settings-section-title">Внешний вид</div>
+                <div class="settings-row"><div><strong>Тема приложения</strong><span class="hint">Настройка сохраняется на этом устройстве</span></div><button id="settingsThemeToggleBtn" class="secondary-btn settings-theme-btn" type="button">🌙 Тёмная тема</button></div>
+            </section>
+            <section class="settings-section">
+                <div class="settings-section-title">Подключение NODEX</div>
+                <div class="settings-row">
+                    <div><strong>Локальный сервер</strong><span id="settingsServerAddress" class="hint">Используется адрес по умолчанию</span></div>
+                    <button id="openServerConnectBtn" class="secondary-btn" type="button">Настроить</button>
+                </div>
+                <button id="showHostQrBtn" class="secondary-btn w-100" type="button" style="margin-top:10px">Подключить Android</button>
+            </section>
+            <section class="settings-section">
+                <div class="settings-section-title">Сейф</div>
+                <div class="settings-row settings-vault-row"><div><strong>Состояние Сейфа</strong><span id="settingsVaultStatus" class="hint">Проверяем состояние…</span></div><button id="settingsOpenVaultBtn" class="secondary-btn" type="button">Открыть Сейф</button></div>
+                <button id="vaultLockBtn" class="secondary-btn settings-lock-btn" type="button" hidden>Заблокировать Сейф</button>
+            </section>
+            <section class="settings-section settings-profile-section">
+                <div class="settings-section-title">Профиль</div>
+            </section>
+            <div class="avatar-upload-wrapper">
+                <div class="avatar-preview-container" aria-label="Предпросмотр кадрирования аватара">
+                    <canvas id="profileAvatarPreview" class="profile-avatar-large" width="256" height="256" hidden></canvas>
+                    <div id="profileAvatarPlaceholder" class="profile-avatar-large placeholder">👤</div>
+                </div>
+                <div class="avatar-upload-actions">
+                    <button id="avatarUploadBtn" class="secondary-btn" type="button">📷 Выбрать фото</button>
+                    <span class="avatar-upload-hint">Круглый предпросмотр — так аватар будет выглядеть в профиле.</span>
+                </div>
+                <input type="file" id="avatarFileInput" accept="image/*" hidden>
+                <div id="avatarControls" class="avatar-crop-controls" hidden>
+                    <label class="avatar-range-row" for="avatarZoom"><span>Масштаб <output id="avatarZoomValue">1.00×</output></span><input type="range" id="avatarZoom" min="1" max="3" step="0.05" value="1"></label>
+                    <label class="avatar-range-row" for="avatarOffsetX"><span>Смещение по горизонтали <output id="avatarOffsetXValue">0</output></span><input type="range" id="avatarOffsetX" min="-100" max="100" step="1" value="0"></label>
+                    <label class="avatar-range-row" for="avatarOffsetY"><span>Смещение по вертикали <output id="avatarOffsetYValue">0</output></span><input type="range" id="avatarOffsetY" min="-100" max="100" step="1" value="0"></label>
+                    <button id="avatarCropResetBtn" class="avatar-reset-btn" type="button">Сбросить кадрирование</button>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 20px;">
+                <label>Имя профиля:</label>
+                <input type="text" id="profileNameInput" maxlength="40">
+            </div>
+            <div class="form-group" style="border-top: 1px solid var(--border); padding-top: 15px; display: none;">
+                <label>Pinata JWT:</label>
+                <input type="password" id="pinataJwtInput">
+            </div>
+            <div class="modal-actions">
+                <button id="profileSaveBtn" class="primary-btn" style="flex:1;">Сохранить</button>
+                <button id="settingsCancelBtn" type="button" class="secondary-btn" style="flex:1;">Закрыть</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="serverConnectModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="serverConnectTitle">
+        <div class="modal-content server-connect-modal">
+            <div class="settings-modal-heading">
+                <div><h3 id="serverConnectTitle">Подключение к NODEX</h3><p class="hint">Введите адрес Windows-компьютера в локальной сети</p></div>
+                <button id="serverConnectCloseBtn" class="icon-close-btn" type="button" aria-label="Закрыть">✕</button>
+            </div>
+            <div class="form-group">
+                <label for="serverAddressInput">Адрес сервера</label>
+                <input id="serverAddressInput" type="text" inputmode="url" autocomplete="url" placeholder="192.168.1.5:3001" maxlength="255">
+                <p class="hint">Можно указать IP:порт или HTTPS-адрес. Не добавляйте путь /api/v1.</p>
+            </div>
+            <div id="serverConnectStatus" class="pairing-status" role="status" aria-live="polite"></div>
+            <button id="saveServerAddressBtn" class="primary-btn w-100" type="button">Сохранить сервер</button>
+            <button id="startServerQrScanBtn" class="secondary-btn w-100" type="button">Сканировать QR-код</button>
+            <div id="serverQrReader" class="pairing-qr-reader" hidden></div>
+            <button id="stopServerQrScanBtn" class="secondary-btn w-100" type="button" hidden>Остановить камеру</button>
+        </div>
+    </div>
+
+    <div id="hostQrModal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="hostQrTitle">
+        <div class="modal-content server-connect-modal">
+            <div class="settings-modal-heading">
+                <div><h3 id="hostQrTitle">Подключить Android</h3><p class="hint">QR-код создаётся локально на этом компьютере</p></div>
+                <button id="hostQrCloseBtn" class="icon-close-btn" type="button" aria-label="Закрыть">✕</button>
+            </div>
+            <div class="form-group">
+                <label for="hostLanAddressInput">Адрес Windows-хоста</label>
+                <input id="hostLanAddressInput" type="text" inputmode="url" placeholder="192.168.1.5:3001" maxlength="255">
+                <p class="hint">Если страница открыта по LAN-адресу, он будет подставлен автоматически. Для localhost укажите IP вручную.</p>
+            </div>
+            <button id="generateHostQrBtn" class="primary-btn w-100" type="button">Создать QR-код</button>
+            <div id="hostQrContainer" class="qr-container" hidden></div>
+            <div id="hostQrStatus" class="pairing-status" role="status" aria-live="polite"></div>
+        </div>
+    </div>
+
+    <!-- ВАЖНО: type="module" обязателен! -->
+    <script type="module" src="app.js"></script>
+</body>
+</html>
