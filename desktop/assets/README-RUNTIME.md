@@ -15,7 +15,7 @@ For PostgreSQL, download the exact Windows x64 binaries ZIP from EDB and verify 
 
 For Kubo, retain the release archive, checksum/signature evidence, and license files alongside the extracted `ipfs.exe`. Verify the release using the official Kubo release page and official `dist.ipfs.tech` distribution.
 
-## Staging rules
+## PostgreSQL packaging decision\n\nAlpha 1 uses the official EDB Windows x64 portable binary ZIP, not embedded-postgres and not a machine-wide PostgreSQL installer/service. Stage the complete extracted distribution under `desktop/assets/postgres/` preserving `bin/`, `lib/`, and `share/`. Electron's service manager runs `initdb.exe` on first launch, starts the private cluster with `pg_ctl.exe` bound only to 127.0.0.1, creates the NODEX database, runs existing migrations, and stops the cluster on exit. The data directory remains in the user's NODEX app-data folder and is not removed by uninstall. No PostgreSQL service registration or administrator-level installation is required.\n\n## Staging rules
 
 1. Preserve the vendor's complete PostgreSQL binary layout. Keep all DLLs in `bin/` and the full `lib/` and `share/` trees; do not copy only `postgres.exe`/`initdb.exe`.
 2. Stage the Node runtime at `runtime/node.exe`.
