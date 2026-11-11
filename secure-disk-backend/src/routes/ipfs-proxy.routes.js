@@ -90,9 +90,14 @@ router.post('/add', ipfsUploadLimiter, upload.single('file'), async (req, res, n
     });
     const text = await upstream.text();
     if (!upstream.ok) return badRequest(res, 'IPFS_UPSTREAM_ERROR', 'Local IPFS upload failed.', 502);
-    const rows = text.trim().split('\n');
-    const result = JSON.parse(rows.at(-1));
-    if (typeof result.Hash !== 'string' || !validCid(result.Hash)) {
+    const rows = text.trim().split(/\r?\n/).filter(Boolean);
+    let result;
+    try {
+      result = rows.length ? JSON.parse(rows.at(-1)) : null;
+    } catch {
+      return badRequest(res, 'IPFS_INVALID_RESPONSE', 'Local IPFS returned an invalid upload response.', 502);
+    }
+    if (!result || typeof result.Hash !== 'string' || !validCid(result.Hash)) {
       return badRequest(res, 'IPFS_INVALID_RESPONSE', 'Local IPFS returned an invalid content identifier.', 502);
     }
     res.set('Cache-Control', 'no-store');
