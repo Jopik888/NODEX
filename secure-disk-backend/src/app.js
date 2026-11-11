@@ -61,6 +61,12 @@ app.use((error, _req, res, _next) => {
   if (error?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Request body contains invalid JSON.' } });
   }
+  if (error?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: { code: 'IPFS_FILE_TOO_LARGE', message: 'Encrypted upload exceeds the 100 MiB limit.' } });
+  }
+  if (error?.name === 'MulterError') {
+    return res.status(400).json({ error: { code: 'IPFS_UPLOAD_INVALID', message: 'Upload must contain exactly one file and no additional fields.' } });
+  }
   if (error?.type === 'entity.too.large') {
     return res.status(413).json({ error: { code: 'REQUEST_TOO_LARGE', message: 'Request body is too large.' } });
   }
