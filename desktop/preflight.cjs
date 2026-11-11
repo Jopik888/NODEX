@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
+const { validateRuntimeManifest } = require('./runtime-integrity.cjs');
 
 const root = path.resolve(__dirname, '..');
 const checks = [
@@ -36,53 +37,14 @@ let manifest;
 try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
 catch (error) { console.error(`Invalid runtime manifest: ${error.message}`); process.exit(1); }
 
-const expectedComponents = {
-  node: { version: '24.22.3', file: 'runtime/node.exe' },
-  postgres: { version: '17.11', file: 'postgres/bin/postgres.exe' },
-  kubo: { version: '0.43.1', file: 'ipfs/ipfs.exe' },
-};
-const assetsRoot = path.resolve(__dirname, 'assets');
-for (const [name, expected] of Object.entries(expectedComponents)) {
-  const component = manifest.components?.[name];
-  if (!component || component.version !== expected.version || component.file !== expected.file
-    || !/^[a-f0-9]{64}$/i.test(component.sha256 || '')) {
-    console.error(`Runtime manifest entry '${name}' must declare version ${expected.version}, file ${expected.file}, and a verified SHA-256.`);
-    process.exit(1);
-  }
-  const filePath = path.resolve(assetsRoot, component.file);
-  const relative = path.relative(assetsRoot, filePath);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
-    console.error(`Runtime manifest file path for '${name}' escapes the assets directory.`);
-    process.exit(1);
-  }
-  const digest = crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
-  if (digest.toLowerCase() !== component.sha256.toLowerCase()) {
-    console.error(`Runtime hash mismatch for ${name}: expected ${component.sha256}, got ${digest}`);
-    process.exit(1);
-  }
-}
-if (manifest.schemaVersion !== 1 || manifest.platform !== 'win32-x64') {
-  console.error('Runtime manifest schemaVersion/platform is invalid for NODEX Windows x64.');
+const runtimeErrors = validateRuntimeManifest({
+  manifest,
+  assetsRoot: path.join(__dirname, 'assets'),
+});
+if (runtimeErrors.length) {
+  console.error('Runtime manifest validation failed:');
+  for (const error of runtimeErrors) console.error(`- ${error}`);
   process.exit(1);
-}
-const requiredIntegrity = [
-  'nodeShasumsSignature',
-  'postgresArchiveSha256',
-  'postgresAuthenticode',
-  'kuboArchiveSha256',
-];
-for (const name of requiredIntegrity) {
-  if (manifest.integrityVerification?.[name] !== 'VERIFIED') {
-    console.error(`Runtime manifest integrityVerification.${name} must be VERIFIED.`);
-    process.exit(1);
-  }
-}
-const requiredArchives = ['nodeWindowsZip', 'postgresBinariesZip', 'kuboWindowsZip'];
-for (const name of requiredArchives) {
-  if (!/^[a-f0-9]{64}$/i.test(manifest.archiveSha256?.[name] || '')) {
-    console.error(`Runtime manifest archiveSha256.${name} must contain a verified SHA-256.`);
-    process.exit(1);
-  }
 }
 
 const nodeExe = path.join(__dirname, 'assets', 'runtime', 'node.exe');
