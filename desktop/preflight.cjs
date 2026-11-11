@@ -80,4 +80,29 @@ for (const [executable, args, expected] of versionChecks) {
   }
 }
 
+
+const postgresBin = path.join(__dirname, 'assets', 'postgres', 'bin');
+const postgresLib = path.join(__dirname, 'assets', 'postgres', 'lib');
+const signatureScript = [
+  "$ErrorActionPreference = 'Stop'",
+  "$roots = @($env:NODEX_PG_BIN, $env:NODEX_PG_LIB)",
+  "$files = @(Get-ChildItem -LiteralPath $roots -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })",
+  "if ($files.Count -eq 0) { Write-Error 'No PostgreSQL executable or DLL files were found.'; exit 1 }",
+  "$invalid = @($files | ForEach-Object { $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName; if ($signature.Status -ne 'Valid') { [PSCustomObject]@{ Path = $_.FullName; Status = [string]$signature.Status; Signer = $signature.SignerCertificate.Subject } } })",
+  "if ($invalid.Count -gt 0) { $invalid | ConvertTo-Json -Compress | Write-Output; exit 1 }",
+  "Write-Output ('Verified Authenticode signatures for ' + $files.Count + ' PostgreSQL EXE/DLL files.')",
+].join('; ');
+const signatures = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', signatureScript], {
+  encoding: 'utf8',
+  windowsHide: true,
+  maxBuffer: 4 * 1024 * 1024,
+  env: { ...process.env, NODEX_PG_BIN: postgresBin, NODEX_PG_LIB: postgresLib },
+});
+if (signatures.error || signatures.status !== 0) {
+  console.error('PostgreSQL Authenticode verification failed. Every EXE/DLL in bin/ and lib/ must have a valid trusted signature.');
+  console.error((signatures.stdout || signatures.stderr || signatures.error?.message || '').trim());
+  process.exit(1);
+}
+console.log((signatures.stdout || '').trim());
+
 console.log('NODEX Alpha 1 Windows x64 packaging preflight: PASS');
