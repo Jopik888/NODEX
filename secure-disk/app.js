@@ -19,6 +19,13 @@ const CHUNK_SIZE = 5 * 1024 * 1024;
 const LARGE_FILE_THRESHOLD = 50 * 1024 * 1024;
 const MAX_ZIP_SIZE = 100 * 1024 * 1024;
 
+async function ipfsRequestHeaders() {
+    if (!isNativeClient()) return {};
+    const token = await authApi.getCsrfToken({ force: true });
+    return { 'X-CSRF-Token': token };
+}
+
+
 let myFiles = [], vaultFiles = [], currentProfile = '', syncRoomId = '', authenticatedUser = null, isVaultUnlocked = false, currentDeviceHasVaultAccess = false;
 let vaultMasterKey = null, vaultId = null, activePairingInvite = null, claimedPairingInvite = null, pairingScanner = null, pairingPollCancelled = false;
 // Legacy v0.3 Vault keys received from peers are held only in memory until wrapped by VMK.
@@ -77,7 +84,7 @@ function uploadBufferToIPFS(buffer, onProgress) {
         xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => { xhr.status === 200 ? resolve(JSON.parse(xhr.responseText).Hash) : reject(new Error('IPFS: ' + xhr.status)); };
         xhr.ontimeout = () => reject(new Error('Таймаут при загрузке')); xhr.onerror = () => reject(new Error('Сетевая ошибка'));
-        const fd = new FormData(); fd.append('file', new Blob([buffer]), 'data.enc'); xhr.send(fd);
+        const fd = new FormData(); fd.append('file', new Blob([buffer]), 'data.enc'); void ipfsRequestHeaders().then(headers => { for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value); xhr.send(fd); }).catch(reject);
     });
 }
 function fetchFromIPFS(cid, onProgress, timeoutMs = 30000) {
@@ -86,10 +93,10 @@ function fetchFromIPFS(cid, onProgress, timeoutMs = 30000) {
         if (onProgress) xhr.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => { xhr.status === 200 ? resolve(xhr.response) : reject(new Error('IPFS cat: ' + xhr.status)); };
         xhr.ontimeout = () => reject(new Error('Таймаут')); xhr.onerror = () => reject(new Error('Сеть'));
-        xhr.send();
+        void ipfsRequestHeaders().then(headers => { for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value); xhr.send(); }).catch(reject);
     });
 }
-async function pinCidLocally(cid, timeoutMs = 30000) { const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs); try { const res = await fetch(`${IPFS_API}/pin/add?arg=${encodeURIComponent(cid)}`, { method: 'POST', signal: controller.signal }); return res.ok; } catch (e) { return false; } finally { clearTimeout(timer); } }
+async function pinCidLocally(cid, timeoutMs = 30000) { const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs); try { const headers = await ipfsRequestHeaders(); const res = await fetch(`${IPFS_API}/pin/add?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers, signal: controller.signal }); return res.ok; } catch (e) { return false; } finally { clearTimeout(timer); } }
 
 function setSyncStatus(text, isError = false) {
     const el = document.getElementById('syncStatus'); if (!el) return;
@@ -2083,8 +2090,8 @@ async function deleteSelected(isVault) {
         const cidsToDelete = [];
         for (let i = targetArray.length - 1; i >= 0; i--) if (selectedSet.has(targetArray[i].cid)) { cidsToDelete.push(targetArray[i].cid, ...(targetArray[i].chunkCids || [])); targetArray.splice(i, 1); }
         markDeletedCids(cidsToDelete); selectedSet.clear(); saveVaultFiles(); updateBulkUI(true);
-        for (const cid of cidsToDelete) { try { await fetch(`${IPFS_API}/pin/rm?arg=${encodeURIComponent(cid)}`, { method: 'POST' }); } catch (_) {} }
-        fetch(`${IPFS_API}/repo/gc`, { method: 'POST' }).catch(() => {}); localPinsCache = null; return;
+        for (const cid of cidsToDelete) { try { const headers = await ipfsRequestHeaders(); await fetch(`${IPFS_API}/pin/rm?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers }); } catch (_) {} }
+        if (!isNativeClient()) fetch(`${IPFS_API}/repo/gc`, { method: 'POST' }).catch(() => {}); localPinsCache = null; return;
     }
 
     const selected = getSelectedDriveItems();
@@ -2106,8 +2113,8 @@ async function deleteSelected(isVault) {
     myFiles = myFiles.filter(item => isFolderRecord(item) ? !foldersToDelete.has(item.id) : !filesToDelete.has(item.cid));
     markDeletedCids(cidsToDelete); markDeletedFolderIds([...foldersToDelete]);
     selectedMyFiles.clear(); saveFiles();
-    for (const cid of cidsToDelete) { try { await fetch(`${IPFS_API}/pin/rm?arg=${encodeURIComponent(cid)}`, { method: 'POST' }); } catch (_) {} }
-    fetch(`${IPFS_API}/repo/gc`, { method: 'POST' }).catch(() => {}); localPinsCache = null;
+    for (const cid of cidsToDelete) { try { const headers = await ipfsRequestHeaders(); await fetch(`${IPFS_API}/pin/rm?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers }); } catch (_) {} }
+    if (!isNativeClient()) fetch(`${IPFS_API}/repo/gc`, { method: 'POST' }).catch(() => {}); localPinsCache = null;
 }
 
 document.getElementById('myFilesDeleteSelectedBtn').onclick = () => void deleteSelected(false);
