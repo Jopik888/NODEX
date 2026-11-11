@@ -80,7 +80,7 @@ async function getAvatarUrl(cid) { if (!cid) return null; if (avatarCache.has(ci
 
 function uploadBufferToIPFS(buffer, onProgress) {
     return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest(); xhr.open('POST', `${IPFS_API}/add?pin=true`); xhr.timeout = 120000;
+        const xhr = new XMLHttpRequest(); xhr.open('POST', `${IPFS_API}/add?pin=true`); xhr.withCredentials = true; xhr.timeout = 120000;
         xhr.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => { xhr.status === 200 ? resolve(JSON.parse(xhr.responseText).Hash) : reject(new Error('IPFS: ' + xhr.status)); };
         xhr.ontimeout = () => reject(new Error('Таймаут при загрузке')); xhr.onerror = () => reject(new Error('Сетевая ошибка'));
@@ -89,14 +89,14 @@ function uploadBufferToIPFS(buffer, onProgress) {
 }
 function fetchFromIPFS(cid, onProgress, timeoutMs = 30000) {
     return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest(); xhr.open('POST', `${IPFS_API}/cat?arg=${encodeURIComponent(cid)}`); xhr.responseType = 'arraybuffer'; xhr.timeout = timeoutMs;
+        const xhr = new XMLHttpRequest(); xhr.open('POST', `${IPFS_API}/cat?arg=${encodeURIComponent(cid)}`); xhr.withCredentials = true; xhr.responseType = 'arraybuffer'; xhr.timeout = timeoutMs;
         if (onProgress) xhr.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
         xhr.onload = () => { xhr.status === 200 ? resolve(xhr.response) : reject(new Error('IPFS cat: ' + xhr.status)); };
         xhr.ontimeout = () => reject(new Error('Таймаут')); xhr.onerror = () => reject(new Error('Сеть'));
         void ipfsRequestHeaders().then(headers => { for (const [name, value] of Object.entries(headers)) xhr.setRequestHeader(name, value); xhr.send(); }).catch(reject);
     });
 }
-async function pinCidLocally(cid, timeoutMs = 30000) { const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs); try { const headers = await ipfsRequestHeaders(); const res = await fetch(`${IPFS_API}/pin/add?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers, signal: controller.signal }); return res.ok; } catch (e) { return false; } finally { clearTimeout(timer); } }
+async function pinCidLocally(cid, timeoutMs = 30000) { const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeoutMs); try { const headers = await ipfsRequestHeaders(); const res = await fetch(`${IPFS_API}/pin/add?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers, credentials: 'include', signal: controller.signal }); return res.ok; } catch (e) { return false; } finally { clearTimeout(timer); } }
 
 function setSyncStatus(text, isError = false) {
     const el = document.getElementById('syncStatus'); if (!el) return;
@@ -2090,7 +2090,7 @@ async function deleteSelected(isVault) {
         const cidsToDelete = [];
         for (let i = targetArray.length - 1; i >= 0; i--) if (selectedSet.has(targetArray[i].cid)) { cidsToDelete.push(targetArray[i].cid, ...(targetArray[i].chunkCids || [])); targetArray.splice(i, 1); }
         markDeletedCids(cidsToDelete); selectedSet.clear(); saveVaultFiles(); updateBulkUI(true);
-        for (const cid of cidsToDelete) { try { const headers = await ipfsRequestHeaders(); await fetch(`${IPFS_API}/pin/rm?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers }); } catch (_) {} }
+        for (const cid of cidsToDelete) { try { const headers = await ipfsRequestHeaders(); await fetch(`${IPFS_API}/pin/rm?arg=${encodeURIComponent(cid)}`, { method: 'POST', headers, credentials: 'include' }); } catch (_) {} }
         if (!isNativeClient()) fetch(`${IPFS_API}/repo/gc`, { method: 'POST' }).catch(() => {}); localPinsCache = null; return;
     }
 
