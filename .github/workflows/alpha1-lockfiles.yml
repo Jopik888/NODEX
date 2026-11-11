@@ -1,4 +1,4 @@
-name: Generate Alpha 1 lockfiles
+name: NODEX Alpha 1 validation
 
 on:
   push:
@@ -10,44 +10,63 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  lockfiles:
+  backend:
+    name: Backend install, syntax and tests
     runs-on: windows-latest
     steps:
-      - name: Checkout feature branch
+      - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: feature/alpha1-build-preparation
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up pinned Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24.22.2
           cache: npm
-          cache-dependency-path: |
-            desktop/package.json
-            secure-disk-backend/package.json
+          cache-dependency-path: secure-disk-backend/package-lock.json
 
-      - name: Generate desktop lockfile
-        working-directory: desktop
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-
-      - name: Generate backend lockfile
+      - name: Install locked backend dependencies
         working-directory: secure-disk-backend
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
-      - name: Commit generated lockfiles
+      - name: Check JavaScript syntax
+        working-directory: secure-disk-backend
+        run: npm run check
+
+      - name: Run backend tests
+        working-directory: secure-disk-backend
+        run: npm test
+
+      - name: Verify native Argon2 module loads
+        working-directory: secure-disk-backend
+        run: node --input-type=module -e "import('argon2').then(() => console.log('argon2 native module loaded'))"
+
+  desktop:
+    name: Desktop install and syntax
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install locked desktop dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      - name: Check Electron entry points
+        working-directory: desktop
         shell: pwsh
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add desktop/package-lock.json secure-disk-backend/package-lock.json
-          if (-not (git diff --cached --quiet)) {
-            git commit -m "build(alpha1): generate reproducible npm lockfiles"
-            git push origin HEAD:feature/alpha1-build-preparation
-          } else {
-            Write-Host "Lockfiles are already up to date."
-          }
+          node --check main.cjs
+          node --check preload.cjs
+          node --check service-manager.cjs
+          node --check setup-renderer.js
+          node --check preflight.cjs
