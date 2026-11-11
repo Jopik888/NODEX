@@ -234,7 +234,7 @@ class DesktopServiceManager {
       PORT: '3001',
       DATABASE_URL: `postgres://nodex:${encodeURIComponent(this.secrets.dbPassword)}@127.0.0.1:5432/nodex`,
       DATABASE_SSL: 'false',
-      FRONTEND_ORIGINS: 'http://127.0.0.1:4173',
+      FRONTEND_ORIGINS: 'http://127.0.0.1:4173,https://localhost,capacitor://localhost',
       SYNC_ROOM_ENCRYPTION_KEY_BASE64: this.secrets.syncKey,
       SYNC_ROOM_ENCRYPTION_KEY_VERSION: 'alpha1-local-v1',
       DEV_RETURN_VERIFICATION_TOKEN: 'true',
