@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/alpha1-build-preparation
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
