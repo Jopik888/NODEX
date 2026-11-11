@@ -9,6 +9,7 @@ import { Readable } from 'node:stream';
 import { requireAuth } from '../middleware/auth.js';
 import { requireCsrf, requireSessionCsrf } from '../middleware/csrf.js';
 import { makeLimiter } from '../middleware/rate-limit.js';
+import { isPlausibleIpfsCid } from '../utils/ipfs-cid.js';
 
 const router = Router();
 const KUBO_API = 'http://127.0.0.1:5001/api/v0';
@@ -25,10 +26,7 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 0, parts: 1 },
 });
 
-const cidPattern = /^(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/;
-function validCid(value) {
-  return typeof value === 'string' && cidPattern.test(value);
-}
+const validCid = isPlausibleIpfsCid;
 function badRequest(res, code, message, status = 400) {
   return res.status(status).json({ error: { code, message } });
 }
