@@ -78,3 +78,5 @@ jobs:
           node --check service-manager.cjs
           node --check setup-renderer.js
           node --check preflight.cjs
+          node --check runtime-integrity.cjs
+          node --test runtime-integrity.test.cjs
