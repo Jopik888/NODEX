@@ -1,0 +1,50 @@
+name: Generate Alpha 1 lockfiles
+
+on:
+  push:
+    branches:
+      - feature/alpha1-build-preparation
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lockfiles:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/alpha1-build-preparation
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: |
+            desktop/package.json
+            secure-disk-backend/package.json
+
+      - name: Generate desktop lockfile
+        working-directory: desktop
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Generate backend lockfile
+        working-directory: secure-disk-backend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit generated lockfiles
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop/package-lock.json secure-disk-backend/package-lock.json
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "build(alpha1): generate reproducible npm lockfiles"
+            git push origin HEAD:feature/alpha1-build-preparation
+          } else {
+            Write-Host "Lockfiles are already up to date."
+          }
