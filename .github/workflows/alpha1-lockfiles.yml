@@ -18,10 +18,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Set up pinned Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.22.3
           cache: npm
@@ -30,6 +30,10 @@ jobs:
       - name: Install locked backend dependencies
         working-directory: secure-disk-backend
         run: npm ci --no-audit --no-fund
+
+      - name: Audit backend dependencies
+        working-directory: secure-disk-backend
+        run: npm audit --audit-level=high
 
       - name: Check JavaScript syntax
         working-directory: secure-disk-backend
@@ -48,10 +52,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.1
 
       - name: Set up pinned Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.22.3
           cache: npm
@@ -60,6 +64,10 @@ jobs:
       - name: Install locked desktop dependencies
         working-directory: desktop
         run: npm ci --no-audit --no-fund
+
+      - name: Audit desktop and build dependencies
+        working-directory: desktop
+        run: npm audit --audit-level=high
 
       - name: Check Electron entry points
         working-directory: desktop
