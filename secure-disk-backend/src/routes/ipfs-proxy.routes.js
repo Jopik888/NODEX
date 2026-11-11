@@ -56,7 +56,9 @@ router.post('/add', upload.single('file'), async (req, res, next) => {
       for await (const chunk of createReadStream(filePath)) yield chunk;
       yield suffix;
     })()));
-    const upstream = await fetch(kuboUrl('add'), {
+    const addUrl = kuboUrl('add');
+    if (req.query.pin === 'true') addUrl.searchParams.set('pin', 'true');
+    const upstream = await fetch(addUrl, {
       method: 'POST',
       headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
       body,
