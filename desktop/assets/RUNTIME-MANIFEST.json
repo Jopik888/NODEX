@@ -6,7 +6,7 @@
       "version": "24.22.3",
       "source": "https://nodejs.org/dist/v24.22.3/win-x64/node.exe",
       "file": "runtime/node.exe",
-      "sha256": ""
+      "sha256": "86fc4785327db5f5c7558dc6156c543b433c313e813a222e088086222ab4afa6"
     },
     "postgres": {
       "version": "17.11",
@@ -23,7 +23,8 @@
   },
   "archiveSha256": {
     "postgresBinariesZip": "",
-    "kuboWindowsZip": ""
+    "kuboWindowsZip": "",
+    "nodeWindowsZip": "e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f"
   },
   "integrityVerification": {
     "nodeShasumsSignature": "PENDING",
