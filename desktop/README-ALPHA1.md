@@ -4,7 +4,7 @@
 
 - Electron main/preload shell with `contextIsolation`, `sandbox`, `nodeIntegration: false`.
 - Local frontend HTTP origin on `127.0.0.1:4173` (secure-context localhost; fixed origin for backend CORS).
-- Bootstrap/preflight for bundled Node.js 24.22.2, PostgreSQL 17.11 binaries, Kubo 0.43.1 and backend dependencies; packaged frontend is resolved from the `resources/frontend` payload.
+- Bootstrap/preflight for bundled Node.js 24.22.3, PostgreSQL 17.11 binaries, Kubo 0.43.1 and backend dependencies; packaged frontend is resolved from the `resources/frontend` payload.
 - Windows DPAPI-backed encrypted storage for generated PostgreSQL password and sync-room encryption key via Electron `safeStorage`.
 - First-run PostgreSQL data initialization in `%APPDATA%/NODEX`, loopback-only PostgreSQL listener, database creation and existing SQL migrations.
 - Kubo repo initialization and loopback-only API/Gateway configuration; Kubo daemon lifecycle.
@@ -14,7 +14,7 @@
 ## Важные ограничения этой стадии
 
 1. В архиве проекта пока нет runtime-бинарников Node.js, PostgreSQL и Kubo, поэтому готовый EXE ещё не собирается. `desktop/package-lock.json` и `secure-disk-backend/package-lock.json` уже зафиксированы; CI проверяет установку из lock-файлов. Runtime-бинарники нужно добавить в `assets` по `assets/README-RUNTIME.md` после проверки версий, лицензий и SHA-256.
-2. Backend lock-файл уже зафиксирован. До release необходимо выполнить `npm ci --omit=dev` на Windows x64 и проверить нативный `argon2` именно на поставляемом Node.js 24.22.2 runtime; CI дополнительно проверяет загрузку нативного модуля на Node.js 24.22.2.
+2. Backend lock-файл уже зафиксирован. До release необходимо выполнить `npm ci --omit=dev` на Windows x64 и проверить нативный `argon2` именно на поставляемом Node.js 24.22.3 runtime; CI дополнительно проверяет загрузку нативного модуля на Node.js 24.22.3.
 3. Windows desktop frontend продолжает обращаться к Kubo напрямую по loopback. Для Android добавлен ограниченный backend proxy `/ipfs/api/v0`: только `add`, `cat`, `pin/add`, `pin/rm`; все запросы требуют активную сессию, CSRF и session-bound CSRF. Kubo API/Gateway остаются строго на 127.0.0.1. `repo/gc` никогда не проксируется. Загрузка временно сохраняется через multer diskStorage (лимит 100 MiB) и удаляется после отправки в Kubo.
 4. Frontend содержит ESM/CDN зависимости (Trystero, JSZip, qrcode-generator, html5-qrcode). Для работы без интернета их нужно локализовать и проверить лицензии/версии. На Alpha 1 интернет нужен для этих внешних модулей.
 5. SMTP в Alpha 1 не настроен по умолчанию. Backend запускается в development-mode с `DEV_RETURN_VERIFICATION_TOKEN=true` для тестовой регистрации. Не использовать эту конфигурацию как публичный production-сервер.
@@ -24,12 +24,12 @@
 
 ## Подготовка build-машины
 
-Требуется Windows 10/11 x64, Node.js 24.22.2 и npm.
+Требуется Windows 10/11 x64, Node.js 24.22.3 и npm.
 
 1. Положить проверенный `node.exe` в `desktop/assets/runtime/`.
 2. Положить полную Windows binary distribution PostgreSQL в `desktop/assets/postgres/` (структура `bin`, `lib`, `share`).
 3. Положить `ipfs.exe` Kubo в `desktop/assets/ipfs/`.
-4. В `secure-disk-backend` выполнить `npm ci --omit=dev` на Node.js 24.22.2; lock-файл уже сохранён в репозитории.
+4. В `secure-disk-backend` выполнить `npm ci --omit=dev` на Node.js 24.22.3; lock-файл уже сохранён в репозитории.
 5. В `desktop` выполнить `npm ci`.
 6. Запуск оболочки: `npm start`.
 7. Сборка: `npm run dist:win`.
