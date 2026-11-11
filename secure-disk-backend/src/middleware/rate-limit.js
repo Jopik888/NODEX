@@ -1,6 +1,6 @@
 import { rateLimit } from 'express-rate-limit';
 
-function makeLimiter(windowMs, limit, code = 'RATE_LIMITED') {
+export function makeLimiter(windowMs, limit, code = 'RATE_LIMITED') {
   return rateLimit({
     windowMs,
     limit,
