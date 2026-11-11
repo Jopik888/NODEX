@@ -3,6 +3,7 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
+const { validateRuntimeManifest } = require('./runtime-integrity.cjs');
 const http = require('node:http');
 const net = require('node:net');
 
@@ -52,58 +53,14 @@ class DesktopServiceManager {
       ['Backend dependency: argon2', path.join(p.backend, 'node_modules', 'argon2')],
     ];
     const missing = required.filter(([, target]) => !fs.existsSync(target)).map(([label, target]) => ({ label, path: target }));
-    const manifestPath = p.runtimeManifest;
     try {
-      const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-      if (manifest.schemaVersion !== 1 || manifest.platform !== 'win32-x64') {
-        throw new Error('Unsupported runtime manifest schema or platform.');
-      }
-
-      const requiredIntegrity = [
-        'nodeShasumsSignature',
-        'postgresArchiveSha256',
-        'postgresAuthenticode',
-        'kuboArchiveSha256',
-      ];
-      for (const name of requiredIntegrity) {
-        if (manifest.integrityVerification?.[name] !== 'VERIFIED') {
-          throw new Error(`Integrity check '${name}' is not VERIFIED.`);
-        }
-      }
-
-      const requiredArchives = ['nodeWindowsZip', 'postgresBinariesZip', 'kuboWindowsZip'];
-      for (const name of requiredArchives) {
-        if (!/^[a-f0-9]{64}$/i.test(manifest.archiveSha256?.[name] || '')) {
-          throw new Error(`Archive SHA-256 '${name}' is missing or invalid.`);
-        }
-      }
-
-      const expected = {
-        node: { version: '24.22.3', file: 'runtime/node.exe', absolute: p.node },
-        postgres: { version: '17.11', file: 'postgres/bin/postgres.exe', absolute: path.join(p.postgresBin, 'postgres.exe') },
-        kubo: { version: '0.43.1', file: 'ipfs/ipfs.exe', absolute: p.ipfs },
-      };
-      for (const [name, item] of Object.entries(expected)) {
-        const component = manifest.components?.[name];
-        if (!component || component.version !== item.version || component.file !== item.file
-          || !/^[a-f0-9]{64}$/i.test(component.sha256 || '')) {
-          throw new Error(`Runtime manifest entry '${name}' is missing or invalid.`);
-        }
-        const absolute = path.resolve(p.assetsRoot, component.file);
-        const relative = path.relative(p.assetsRoot, absolute);
-        if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || absolute !== path.resolve(item.absolute)) {
-          throw new Error(`Runtime manifest path for '${name}' is not an approved asset path.`);
-        }
-        if (!fs.existsSync(absolute)) continue;
-        const digest = crypto.createHash('sha256').update(fs.readFileSync(absolute)).digest('hex');
-        if (digest.toLowerCase() !== component.sha256.toLowerCase()) {
-          throw new Error(`Runtime hash mismatch for '${name}'.`);
-        }
+      const manifest = JSON.parse(fs.readFileSync(p.runtimeManifest, 'utf8'));
+      for (const error of validateRuntimeManifest({ manifest, assetsRoot: p.assetsRoot })) {
+        missing.push({ label: 'Runtime integrity verification', path: error });
       }
     } catch (error) {
       missing.push({ label: 'Runtime integrity verification', path: error.message });
     }
-
     const versionChecks = [
       [p.node, ['--version'], 'v24.22.3', 'Node.js must be exactly v24.22.3'],
       [path.join(p.postgresBin, 'postgres.exe'), ['--version'], 'postgres (PostgreSQL) 17.11', 'PostgreSQL must be exactly 17.11'],
