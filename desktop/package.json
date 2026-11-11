@@ -28,7 +28,8 @@
       "setup.html",
       "setup-renderer.js",
       "package.json",
-      "preflight.cjs"
+      "preflight.cjs",
+      "runtime-integrity.cjs"
     ],
     "extraResources": [
       {
