@@ -38,7 +38,7 @@ class DesktopServiceManager {
   checkAssets() {
     const p = this.paths();
     const required = [
-      ['Node.js runtime (Node 24.22.2 x64)', p.node],
+      ['Node.js runtime (Node 24.22.3 x64)', p.node],
       ['PostgreSQL: bin\\postgres.exe', path.join(p.postgresBin, 'postgres.exe')],
       ['PostgreSQL: bin\\initdb.exe', path.join(p.postgresBin, 'initdb.exe')],
       ['PostgreSQL: bin\\pg_ctl.exe', path.join(p.postgresBin, 'pg_ctl.exe')],
@@ -50,7 +50,7 @@ class DesktopServiceManager {
     ];
     const missing = required.filter(([, target]) => !fs.existsSync(target)).map(([label, target]) => ({ label, path: target }));
     const versionChecks = [
-      [p.node, ['--version'], 'v24.22.2', 'Node.js must be exactly v24.22.2'],
+      [p.node, ['--version'], 'v24.22.3', 'Node.js must be exactly v24.22.3'],
       [path.join(p.postgresBin, 'postgres.exe'), ['--version'], 'postgres (PostgreSQL) 17.11', 'PostgreSQL must be exactly 17.11'],
       [p.ipfs, ['--version'], 'ipfs version 0.43.1', 'Kubo must be exactly 0.43.1'],
     ];
