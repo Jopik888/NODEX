@@ -66,12 +66,12 @@ test('rejects runtime components without verified source/signature states', (t) 
     .some((error) => error.includes('postgresAuthenticode must be VERIFIED')));
 });
 
-test('rejects a missing archive digest and a path outside the assets root', (t) => {
+test('rejects a missing archive digest and path traversal outside the assets root', (t) => {
   const f = fixture();
   t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
   f.manifest.archiveSha256.kuboWindowsZip = '';
   f.manifest.components.node.file = '../node.exe';
   const errors = validateRuntimeManifest({ manifest: f.manifest, assetsRoot: f.root });
   assert.ok(errors.some((error) => error.includes('archiveSha256.kuboWindowsZip')));
-  assert.ok(errors.some((error) => error.includes('components.node must declare')));
+  assert.ok(errors.some((error) => error.includes('components.node.file escapes')));
 });
