@@ -56,9 +56,9 @@ function validateRuntimeManifest({ manifest, assetsRoot }) {
 
   for (const [name, expected] of Object.entries(EXPECTED_COMPONENTS)) {
     const component = manifest.components?.[name];
-    if (!component || component.version !== expected.version || component.file !== expected.file
-      || !/^[a-f0-9]{64}$/i.test(component.sha256 || '')) {
-      errors.push(`components.${name} must declare version ${expected.version}, file ${expected.file}, and a verified SHA-256.`);
+    if (!component || component.version !== expected.version
+      || !/^[a-f0-9]{64}$/i.test(component.sha256 || '') || typeof component.file !== 'string') {
+      errors.push(`components.${name} must declare version ${expected.version}, a runtime file path, and a verified SHA-256.`);
       continue;
     }
 
@@ -66,6 +66,10 @@ function validateRuntimeManifest({ manifest, assetsRoot }) {
     const relative = path.relative(realAssetsRoot, filePath);
     if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
       errors.push(`components.${name}.file escapes the runtime assets directory.`);
+      continue;
+    }
+    if (component.file !== expected.file) {
+      errors.push(`components.${name}.file must use the approved path ${expected.file}.`);
       continue;
     }
 
