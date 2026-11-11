@@ -8,6 +8,7 @@ import csrfRoutes from './routes/csrf.routes.js';
 import devicesRoutes from './routes/devices.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
 import vaultRoutes from './routes/vault.routes.js';
+import ipfsProxyRoutes from './routes/ipfs-proxy.routes.js';
 import { apiLimiter } from './middleware/rate-limit.js';
 
 export const app = express();
@@ -48,6 +49,7 @@ api.use('/devices/pairing', pairingRoutes);
 api.use('/devices', devicesRoutes);
 api.use('/vault', vaultRoutes);
 app.use('/api/v1', api);
+app.use('/ipfs/api/v0', ipfsProxyRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } });
