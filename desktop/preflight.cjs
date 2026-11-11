@@ -36,7 +36,7 @@ let manifest;
 try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
 catch (error) { console.error(`Invalid runtime manifest: ${error.message}`); process.exit(1); }
 
-const expectedVersions = { node: '24.22.2', postgres: '17.11', kubo: '0.43.1' };
+const expectedVersions = { node: '24.22.3', postgres: '17.11', kubo: '0.43.1' };
 for (const [name, expectedVersion] of Object.entries(expectedVersions)) {
   const component = manifest.components?.[name];
   if (!component || component.version !== expectedVersion || !/^[a-f0-9]{64}$/i.test(component.sha256 || '')) {
@@ -63,8 +63,8 @@ for (const [name, digest] of Object.entries(manifest.archiveSha256 || {})) {
 
 const nodeExe = path.join(__dirname, 'assets', 'runtime', 'node.exe');
 const version = spawnSync(nodeExe, ['--version'], { encoding: 'utf8', windowsHide: true });
-if (version.status !== 0 || version.stdout.trim() !== 'v24.22.2') {
-  console.error(`Expected bundled Node.js v24.22.2, got: ${(version.stdout || version.stderr || '').trim()}`);
+if (version.status !== 0 || version.stdout.trim() !== 'v24.22.3') {
+  console.error(`Expected bundled Node.js v24.22.3, got: ${(version.stdout || version.stderr || '').trim()}`);
   process.exit(1);
 }
 
