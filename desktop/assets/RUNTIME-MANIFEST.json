@@ -29,6 +29,7 @@
   "integrityVerification": {
     "nodeShasumsSignature": "PENDING",
     "postgresArchiveSha256": "PENDING",
-    "kuboArchiveSha256": "PENDING"
+    "kuboArchiveSha256": "PENDING",
+    "postgresAuthenticode": "PENDING"
   }
 }
