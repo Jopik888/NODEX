@@ -1,7 +1,6 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const crypto = require('node:crypto');
 const { validateRuntimeManifest } = require('./runtime-integrity.cjs');
 
 const root = path.resolve(__dirname, '..');
