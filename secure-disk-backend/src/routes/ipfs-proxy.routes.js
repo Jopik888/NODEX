@@ -11,6 +11,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { requireCsrf, requireSessionCsrf } from '../middleware/csrf.js';
 import { makeLimiter } from '../middleware/rate-limit.js';
 import { isPlausibleIpfsCid } from '../utils/ipfs-cid.js';
+import { parseKuboAddResponse } from '../utils/ipfs-proxy-response.js';
 
 const router = Router();
 const KUBO_API = 'http://127.0.0.1:5001/api/v0';
@@ -90,18 +91,14 @@ router.post('/add', ipfsUploadLimiter, upload.single('file'), async (req, res, n
     });
     const text = await upstream.text();
     if (!upstream.ok) return badRequest(res, 'IPFS_UPSTREAM_ERROR', 'Local IPFS upload failed.', 502);
-    const rows = text.trim().split(/\r?\n/).filter(Boolean);
     let result;
     try {
-      result = rows.length ? JSON.parse(rows.at(-1)) : null;
+      result = parseKuboAddResponse(text);
     } catch {
       return badRequest(res, 'IPFS_INVALID_RESPONSE', 'Local IPFS returned an invalid upload response.', 502);
     }
-    if (!result || typeof result.Hash !== 'string' || !validCid(result.Hash)) {
-      return badRequest(res, 'IPFS_INVALID_RESPONSE', 'Local IPFS returned an invalid content identifier.', 502);
-    }
     res.set('Cache-Control', 'no-store');
-    return res.json({ Hash: result.Hash, Size: String(result.Size || '') });
+    return res.json(result);
   } catch (error) {
     return handleKuboError(error, res, next);
   } finally {
