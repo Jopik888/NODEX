@@ -6,6 +6,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { requireAuth } from '../middleware/auth.js';
 import { requireCsrf, requireSessionCsrf } from '../middleware/csrf.js';
 import { makeLimiter } from '../middleware/rate-limit.js';
@@ -14,6 +15,7 @@ import { isPlausibleIpfsCid } from '../utils/ipfs-cid.js';
 const router = Router();
 const KUBO_API = 'http://127.0.0.1:5001/api/v0';
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const ipfsUploadLimiter = makeLimiter(60 * 1000, 10, 'IPFS_UPLOAD_RATE_LIMITED');
 const TEMP_DIR = path.join(os.tmpdir(), 'nodex-ipfs-proxy');
 
 await mkdir(TEMP_DIR, { recursive: true });
@@ -36,12 +38,35 @@ function kuboUrl(command, arg) {
   return url;
 }
 
+async function fetchKubo(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch (error) {
+    const code = error?.cause?.code;
+    if (error?.name === 'TimeoutError' || error?.name === 'AbortError'
+      || ['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)) {
+      const unavailable = new Error('The local IPFS service is unavailable.');
+      unavailable.code = 'IPFS_UNAVAILABLE';
+      unavailable.cause = error;
+      throw unavailable;
+    }
+    throw error;
+  }
+}
+
+function handleKuboError(error, res, next) {
+  if (error?.code === 'IPFS_UNAVAILABLE') {
+    return badRequest(res, 'IPFS_UNAVAILABLE', 'Local IPFS service is unavailable.', 503);
+  }
+  return next(error);
+}
+
 router.use(requireAuth);
 router.use(makeLimiter(60 * 1000, 120, 'IPFS_RATE_LIMITED'));
 router.use(requireCsrf, requireSessionCsrf);
 
 // This is a narrow RPC allowlist, not a general-purpose Kubo proxy.
-router.post('/add', upload.single('file'), async (req, res, next) => {
+router.post('/add', ipfsUploadLimiter, upload.single('file'), async (req, res, next) => {
   const filePath = req.file?.path;
   if (!filePath) return badRequest(res, 'IPFS_FILE_REQUIRED', 'A single file field is required.');
   try {
@@ -56,7 +81,7 @@ router.post('/add', upload.single('file'), async (req, res, next) => {
     })()));
     const addUrl = kuboUrl('add');
     if (req.query.pin === 'true') addUrl.searchParams.set('pin', 'true');
-    const upstream = await fetch(addUrl, {
+    const upstream = await fetchKubo(addUrl, {
       method: 'POST',
       headers: { 'Content-Type': `multipart/form-data; boundary=${boundary}` },
       body,
@@ -73,7 +98,7 @@ router.post('/add', upload.single('file'), async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     return res.json({ Hash: result.Hash, Size: String(result.Size || '') });
   } catch (error) {
-    return next(error);
+    return handleKuboError(error, res, next);
   } finally {
     await rm(filePath, { force: true }).catch(() => {});
   }
@@ -83,14 +108,15 @@ router.post('/cat', async (req, res, next) => {
   try {
     const cid = req.query.arg;
     if (!validCid(cid)) return badRequest(res, 'IPFS_INVALID_CID', 'Content identifier is invalid.');
-    const upstream = await fetch(kuboUrl('cat', cid), { method: 'POST', signal: AbortSignal.timeout(150000) });
+    const upstream = await fetchKubo(kuboUrl('cat', cid), { method: 'POST', signal: AbortSignal.timeout(150000) });
     if (!upstream.ok || !upstream.body) return badRequest(res, 'IPFS_NOT_FOUND', 'Encrypted object was not found on this node.', upstream.status === 404 ? 404 : 502);
     res.set('Content-Type', 'application/octet-stream');
     res.set('Cache-Control', 'no-store');
     res.set('X-Content-Type-Options', 'nosniff');
-    return Readable.fromWeb(upstream.body).pipe(res);
+    await pipeline(Readable.fromWeb(upstream.body), res);
+    return undefined;
   } catch (error) {
-    return next(error);
+    return handleKuboError(error, res, next);
   }
 });
 
@@ -99,13 +125,21 @@ for (const operation of ['add', 'rm']) {
     try {
       const cid = req.query.arg;
       if (!validCid(cid)) return badRequest(res, 'IPFS_INVALID_CID', 'Content identifier is invalid.');
-      const upstream = await fetch(kuboUrl(`pin/${operation}`, cid), { method: 'POST', signal: AbortSignal.timeout(30000) });
+      const upstream = await fetchKubo(kuboUrl(`pin/${operation}`, cid), { method: 'POST', signal: AbortSignal.timeout(30000) });
       if (!upstream.ok) return badRequest(res, 'IPFS_PIN_FAILED', 'Local IPFS pin operation failed.', 502);
-      const payload = await upstream.json();
+      let payload;
+      try {
+        payload = await upstream.json();
+      } catch {
+        return badRequest(res, 'IPFS_INVALID_RESPONSE', 'Local IPFS returned an invalid pin response.', 502);
+      }
+      if (!payload || typeof payload !== 'object') {
+        return badRequest(res, 'IPFS_INVALID_RESPONSE', 'Local IPFS returned an invalid pin response.', 502);
+      }
       res.set('Cache-Control', 'no-store');
       return res.json(payload);
     } catch (error) {
-      return next(error);
+      return handleKuboError(error, res, next);
     }
   });
 }
