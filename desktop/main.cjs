@@ -177,8 +177,9 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', async (event) => {
-  if (!serviceManager || isQuitting) return;
+  if (!serviceManager) return;
   event.preventDefault();
+  if (isQuitting) return;
   isQuitting = true;
   try { await serviceManager.stop(); }
   catch (error) { console.error('[NODEX] shutdown error:', error.message); }
