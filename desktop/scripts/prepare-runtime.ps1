@@ -3,7 +3,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $DesktopRoot = Split-Path -Parent $PSScriptRoot
 $Assets = Join-Path $DesktopRoot 'assets'
-$Temp = Join-Path ([System.IO.Path]::GetTempPath()) ("nodex-runtime-" + [guid]::NewGuid().ToString('N'))
+$Temp = Join-Path ([IO.Path]::GetTempPath()) ("nodex-runtime-" + [guid]::NewGuid().ToString('N'))
 $NodeVersion = '24.22.3'
 $PostgresVersion = '17.11'
 $KuboVersion = '0.43.1'
@@ -18,12 +18,12 @@ function Get-Download([string]$Url, [string]$Destination) {
   Write-Host "Downloading $Url"
   Invoke-WebRequest -Uri $Url -OutFile $Destination -MaximumRedirection 10
   if (!(Test-Path -LiteralPath $Destination) -or (Get-Item -LiteralPath $Destination).Length -lt 1) {
-    throw "Download is missing or unexpectedly small: $Destination"
+    throw "Download is missing or empty: $Destination"
   }
 }
 
 function Get-Sha256([string]$File) {
-  return (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLowerInvariant()
+  (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
 function Expand-CheckedZip([string]$Archive, [string]$Destination) {
@@ -39,7 +39,7 @@ try {
     New-Item -ItemType Directory -Force -Path $target | Out-Null
   }
 
-  # Node.js: verify the release checksum list with the official active releaser keyring.
+  # Node.js release signature and archive checksum.
   $NodeZip = Join-Path $Temp $NodeZipName
   $NodeSums = Join-Path $Temp 'SHASUMS256.txt'
   $NodeSig = Join-Path $Temp 'SHASUMS256.txt.sig'
@@ -48,21 +48,25 @@ try {
   Get-Download "$NodeBase/SHASUMS256.txt" $NodeSums
   Get-Download "$NodeBase/SHASUMS256.txt.sig" $NodeSig
   Get-Download 'https://github.com/nodejs/release-keys/raw/refs/heads/main/gpg-only-active-keys/pubring.kbx' $NodeKeyring
+
   $Gpgv = Get-Command gpgv.exe -ErrorAction SilentlyContinue
   if (!$Gpgv) { $Gpgv = Get-Command gpgv -ErrorAction SilentlyContinue }
   if (!$Gpgv) {
     choco install gnupg -y --no-progress
     $Gpgv = Get-Command gpgv.exe -ErrorAction Stop
   }
-  & $Gpgv.Source --keyring $NodeKeyring "$NodeSig" "$NodeSums"
+  & $Gpgv.Source --keyring $NodeKeyring $NodeSig $NodeSums
   if ($LASTEXITCODE -ne 0) { throw 'Node.js SHASUMS256 detached signature verification failed.' }
-$NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($NodeZipName, [System.StringComparison]::Ordinal) } | Select-Object -First 1
-  if (!$NodeSumLine -or $NodeSumLine -notmatch '^(?<hash>[a-fA-F0-9]{64})\s+\*?') {
-    throw 'The signed Node.js SHASUMS file does not contain the pinned Windows x64 ZIP.'
-  }
-  $NodeExpected = $Matches.hash.ToLowerInvariant()
+
+  $NodeSumLine = Get-Content -LiteralPath $NodeSums |
+    Where-Object { $_.EndsWith($NodeZipName, [StringComparison]::Ordinal) } |
+    Select-Object -First 1
+  if (!$NodeSumLine) { throw 'The signed Node.js SHASUMS file does not list the pinned Windows x64 ZIP.' }
+  $NodeExpected = ($NodeSumLine -split '\s+')[0].ToLowerInvariant()
+  if ($NodeExpected -notmatch '^[a-f0-9]{64}$') { throw 'The Node.js ZIP checksum entry is malformed.' }
   $NodeActual = Get-Sha256 $NodeZip
   if ($NodeActual -ne $NodeExpected) { throw "Node.js ZIP SHA-256 mismatch: expected $NodeExpected, got $NodeActual" }
+
   $NodeExtract = Join-Path $Temp 'node-extract'
   Expand-CheckedZip $NodeZip $NodeExtract
   $NodeExe = Get-ChildItem -LiteralPath $NodeExtract -Filter node.exe -Recurse | Select-Object -First 1
@@ -72,7 +76,7 @@ $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($
   if ($NodeLicense) { Copy-Item -LiteralPath $NodeLicense.FullName -Destination (Join-Path $Assets 'runtime/LICENSE') }
   $NodeExeHash = Get-Sha256 (Join-Path $Assets 'runtime/node.exe')
 
-  # PostgreSQL: pin the exact EDB 17.11-4 portable ZIP and its vendor-published SHA-256.
+  # PostgreSQL 17.11-4 portable binaries ZIP, pinned to EDB's published digest.
   $PostgresZip = Join-Path $Temp 'postgresql-17.11-4-windows-x64-binaries.zip'
   Get-Download $PostgresUrl $PostgresZip
   $PostgresActual = Get-Sha256 $PostgresZip
@@ -93,10 +97,12 @@ $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($
   Copy-Item -Path (Join-Path $PostgresRoot '*') -Destination (Join-Path $Assets 'postgres') -Recurse -Force
   $PostgresExeHash = Get-Sha256 (Join-Path $Assets 'postgres/bin/postgres.exe')
 
-  $PgPeFiles = Get-ChildItem -LiteralPath @((Join-Path $Assets 'postgres/bin'), (Join-Path $Assets 'postgres/lib')) -Recurse -File |
-    Where-Object { $_.Extension -in '.exe', '.dll' }
+  $PgPeFiles = @(Get-ChildItem -LiteralPath @((Join-Path $Assets 'postgres/bin'), (Join-Path $Assets 'postgres/lib')) -Recurse -File |
+    Where-Object { $_.Extension -in '.exe', '.dll' })
   if ($PgPeFiles.Count -eq 0) { throw 'No PostgreSQL EXE/DLL files were found for signature inspection.' }
-  $PgSignatureStatuses = @($PgPeFiles | ForEach-Object { [string](Get-AuthenticodeSignature -LiteralPath $_.FullName).Status } | Sort-Object -Unique)
+  $PgSignatureStatuses = @($PgPeFiles | ForEach-Object {
+    [string](Get-AuthenticodeSignature -LiteralPath $_.FullName).Status
+  } | Sort-Object -Unique)
   $PgInvalid = @($PgSignatureStatuses | Where-Object { $_ -notin @('Valid', 'NotSigned') })
   if ($PgInvalid.Count -gt 0) { throw "EDB PostgreSQL binaries have invalid/untrusted signatures: $($PgInvalid -join ', ')" }
   if ($PgSignatureStatuses -contains 'NotSigned') {
@@ -106,7 +112,7 @@ $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($
     $PostgresSignatureState = 'VERIFIED'
   }
 
-  # Kubo: verify the official dist.ipfs.tech SHA-512 sidecar before extraction.
+  # Kubo archive verified against the official dist.ipfs.tech SHA-512 sidecar.
   $KuboZip = Join-Path $Temp $KuboZipName
   $KuboSidecar = Join-Path $Temp "$KuboZipName.sha512"
   Get-Download "$KuboBase/$KuboZipName" $KuboZip
@@ -115,7 +121,9 @@ $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($
   if ($KuboSidecarText -notmatch '(?<hash>[a-fA-F0-9]{128})') { throw 'Official Kubo SHA-512 sidecar is malformed.' }
   $KuboExpectedSha512 = $Matches.hash.ToLowerInvariant()
   $KuboActualSha512 = (Get-FileHash -LiteralPath $KuboZip -Algorithm SHA512).Hash.ToLowerInvariant()
-  if ($KuboActualSha512 -ne $KuboExpectedSha512) { throw "Kubo ZIP SHA-512 mismatch: expected $KuboExpectedSha512, got $KuboActualSha512" }
+  if ($KuboActualSha512 -ne $KuboExpectedSha512) {
+    throw "Kubo ZIP SHA-512 mismatch: expected $KuboExpectedSha512, got $KuboActualSha512"
+  }
   $KuboExtract = Join-Path $Temp 'kubo-extract'
   Expand-CheckedZip $KuboZip $KuboExtract
   $KuboExe = Get-ChildItem -LiteralPath $KuboExtract -Filter ipfs.exe -Recurse | Select-Object -First 1
@@ -162,7 +170,7 @@ $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($
     licenseFiles = @('runtime/LICENSE', 'ipfs/LICENSE', 'ipfs/LICENSE-APACHE', 'ipfs/LICENSE-MIT', 'postgres/')
   }
   $ManifestPath = Join-Path $Assets 'RUNTIME-MANIFEST.json'
-  $Manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ManifestPath -Encoding utf8
+  [IO.File]::WriteAllText($ManifestPath, ($Manifest | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
   Write-Host 'Runtime staging completed. Verified archives, signatures, executable hashes and exact versions.'
   Write-Host "Node.js executable SHA-256: $NodeExeHash"
   Write-Host "PostgreSQL executable SHA-256: $PostgresExeHash"
@@ -170,121 +178,7 @@ $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($
   Write-Host "PostgreSQL Authenticode state: $PostgresSignatureState"
 }
 finally {
-  if (Test-Path -LiteralPath $Temp) { Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue }
-}
-) } | Select-Object -First 1
-  if (!$NodeSumLine -or $NodeSumLine -notmatch '^(?<hash>[a-fA-F0-9]{64})\s+\*?') {
-    throw 'The signed Node.js SHASUMS file does not contain the pinned Windows x64 ZIP.'
+  if (Test-Path -LiteralPath $Temp) {
+    Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue
   }
-  $NodeExpected = $Matches.hash.ToLowerInvariant()
-  $NodeActual = Get-Sha256 $NodeZip
-  if ($NodeActual -ne $NodeExpected) { throw "Node.js ZIP SHA-256 mismatch: expected $NodeExpected, got $NodeActual" }
-  $NodeExtract = Join-Path $Temp 'node-extract'
-  Expand-CheckedZip $NodeZip $NodeExtract
-  $NodeExe = Get-ChildItem -LiteralPath $NodeExtract -Filter node.exe -Recurse | Select-Object -First 1
-  if (!$NodeExe) { throw 'node.exe was not found in the verified Node.js archive.' }
-  Copy-Item -LiteralPath $NodeExe.FullName -Destination (Join-Path $Assets 'runtime/node.exe')
-  $NodeLicense = Get-ChildItem -LiteralPath $NodeExtract -Filter LICENSE -Recurse | Select-Object -First 1
-  if ($NodeLicense) { Copy-Item -LiteralPath $NodeLicense.FullName -Destination (Join-Path $Assets 'runtime/LICENSE') }
-  $NodeExeHash = Get-Sha256 (Join-Path $Assets 'runtime/node.exe')
-
-  # PostgreSQL: pin the exact EDB 17.11-4 portable ZIP and its vendor-published SHA-256.
-  $PostgresZip = Join-Path $Temp 'postgresql-17.11-4-windows-x64-binaries.zip'
-  Get-Download $PostgresUrl $PostgresZip
-  $PostgresActual = Get-Sha256 $PostgresZip
-  if ($PostgresActual -ne $PostgresSha256Expected) {
-    throw "EDB PostgreSQL archive SHA-256 mismatch: expected $PostgresSha256Expected, got $PostgresActual"
-  }
-  $PostgresExtract = Join-Path $Temp 'postgres-extract'
-  Expand-CheckedZip $PostgresZip $PostgresExtract
-  $PostgresExe = Get-ChildItem -LiteralPath $PostgresExtract -Filter postgres.exe -Recurse |
-    Where-Object { $_.Directory.Name -eq 'bin' } | Select-Object -First 1
-  if (!$PostgresExe) { throw 'postgres.exe was not found in the verified EDB archive.' }
-  $PostgresRoot = $PostgresExe.Directory.Parent.FullName
-  foreach ($required in @('bin', 'lib', 'share')) {
-    if (!(Test-Path -LiteralPath (Join-Path $PostgresRoot $required))) {
-      throw "EDB archive is missing required PostgreSQL folder: $required"
-    }
-  }
-  Copy-Item -Path (Join-Path $PostgresRoot '*') -Destination (Join-Path $Assets 'postgres') -Recurse -Force
-  $PostgresExeHash = Get-Sha256 (Join-Path $Assets 'postgres/bin/postgres.exe')
-
-  $PgPeFiles = Get-ChildItem -LiteralPath @((Join-Path $Assets 'postgres/bin'), (Join-Path $Assets 'postgres/lib')) -Recurse -File |
-    Where-Object { $_.Extension -in '.exe', '.dll' }
-  if ($PgPeFiles.Count -eq 0) { throw 'No PostgreSQL EXE/DLL files were found for signature inspection.' }
-  $PgSignatureStatuses = @($PgPeFiles | ForEach-Object { [string](Get-AuthenticodeSignature -LiteralPath $_.FullName).Status } | Sort-Object -Unique)
-  $PgInvalid = @($PgSignatureStatuses | Where-Object { $_ -notin @('Valid', 'NotSigned') })
-  if ($PgInvalid.Count -gt 0) { throw "EDB PostgreSQL binaries have invalid/untrusted signatures: $($PgInvalid -join ', ')" }
-  if ($PgSignatureStatuses -contains 'NotSigned') {
-    $PostgresSignatureState = 'NOT_SIGNED_INTERNAL_ALPHA'
-    Write-Warning 'EDB PostgreSQL contains unsigned PE files. This package is closed-Alpha only; Windows Smart App Control may block PostgreSQL binaries.'
-  } else {
-    $PostgresSignatureState = 'VERIFIED'
-  }
-
-  # Kubo: verify the official dist.ipfs.tech SHA-512 sidecar before extraction.
-  $KuboZip = Join-Path $Temp $KuboZipName
-  $KuboSidecar = Join-Path $Temp "$KuboZipName.sha512"
-  Get-Download "$KuboBase/$KuboZipName" $KuboZip
-  Get-Download "$KuboBase/$KuboZipName.sha512" $KuboSidecar
-  $KuboSidecarText = (Get-Content -LiteralPath $KuboSidecar -Raw).Trim()
-  if ($KuboSidecarText -notmatch '(?<hash>[a-fA-F0-9]{128})') { throw 'Official Kubo SHA-512 sidecar is malformed.' }
-  $KuboExpectedSha512 = $Matches.hash.ToLowerInvariant()
-  $KuboActualSha512 = (Get-FileHash -LiteralPath $KuboZip -Algorithm SHA512).Hash.ToLowerInvariant()
-  if ($KuboActualSha512 -ne $KuboExpectedSha512) { throw "Kubo ZIP SHA-512 mismatch: expected $KuboExpectedSha512, got $KuboActualSha512" }
-  $KuboExtract = Join-Path $Temp 'kubo-extract'
-  Expand-CheckedZip $KuboZip $KuboExtract
-  $KuboExe = Get-ChildItem -LiteralPath $KuboExtract -Filter ipfs.exe -Recurse | Select-Object -First 1
-  if (!$KuboExe) { throw 'ipfs.exe was not found in the verified Kubo archive.' }
-  Copy-Item -LiteralPath $KuboExe.FullName -Destination (Join-Path $Assets 'ipfs/ipfs.exe')
-  $KuboRoot = $KuboExe.Directory.FullName
-  foreach ($license in @('LICENSE', 'LICENSE-APACHE', 'LICENSE-MIT', 'README.md')) {
-    $licensePath = Join-Path $KuboRoot $license
-    if (Test-Path -LiteralPath $licensePath) {
-      Copy-Item -LiteralPath $licensePath -Destination (Join-Path $Assets "ipfs/$license")
-    }
-  }
-  $KuboExeHash = Get-Sha256 (Join-Path $Assets 'ipfs/ipfs.exe')
-
-  $NodeVersionOutput = (& (Join-Path $Assets 'runtime/node.exe') --version | Out-String).Trim()
-  $PostgresVersionOutput = (& (Join-Path $Assets 'postgres/bin/postgres.exe') --version | Out-String).Trim()
-  $KuboVersionOutput = (& (Join-Path $Assets 'ipfs/ipfs.exe') --version | Out-String).Trim()
-  if ($NodeVersionOutput -ne "v$NodeVersion") { throw "Unexpected Node.js version: $NodeVersionOutput" }
-  if ($PostgresVersionOutput -ne "postgres (PostgreSQL) $PostgresVersion") { throw "Unexpected PostgreSQL version: $PostgresVersionOutput" }
-  if ($KuboVersionOutput -ne "ipfs version $KuboVersion") { throw "Unexpected Kubo version: $KuboVersionOutput" }
-
-  $Manifest = [ordered]@{
-    schemaVersion = 1
-    platform = 'win32-x64'
-    releaseChannel = 'closed-alpha'
-    installerSigning = 'unsigned'
-    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
-    components = [ordered]@{
-      node = [ordered]@{ version = $NodeVersion; source = "$NodeBase/$NodeZipName"; archiveFile = $NodeZipName; file = 'runtime/node.exe'; sha256 = $NodeExeHash }
-      postgres = [ordered]@{ version = $PostgresVersion; source = $PostgresUrl; archiveFile = 'postgresql-17.11-4-windows-x64-binaries.zip'; file = 'postgres/bin/postgres.exe'; sha256 = $PostgresExeHash }
-      kubo = [ordered]@{ version = $KuboVersion; source = "$KuboBase/$KuboZipName"; archiveFile = $KuboZipName; file = 'ipfs/ipfs.exe'; sha256 = $KuboExeHash }
-    }
-    archiveSha256 = [ordered]@{
-      nodeWindowsZip = $NodeActual
-      postgresBinariesZip = $PostgresActual
-      kuboWindowsZip = (Get-Sha256 $KuboZip)
-    }
-    integrityVerification = [ordered]@{
-      nodeShasumsSignature = 'VERIFIED'
-      postgresArchiveSha256 = 'VERIFIED'
-      postgresAuthenticode = $PostgresSignatureState
-      kuboArchiveSha256 = 'VERIFIED'
-    }
-    licenseFiles = @('runtime/LICENSE', 'ipfs/LICENSE', 'ipfs/LICENSE-APACHE', 'ipfs/LICENSE-MIT', 'postgres/')
-  }
-  $ManifestPath = Join-Path $Assets 'RUNTIME-MANIFEST.json'
-  $Manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ManifestPath -Encoding utf8
-  Write-Host 'Runtime staging completed. Verified archives, signatures, executable hashes and exact versions.'
-  Write-Host "Node.js executable SHA-256: $NodeExeHash"
-  Write-Host "PostgreSQL executable SHA-256: $PostgresExeHash"
-  Write-Host "Kubo executable SHA-256: $KuboExeHash"
-  Write-Host "PostgreSQL Authenticode state: $PostgresSignatureState"
-}
-finally {
-  if (Test-Path -LiteralPath $Temp) { Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue }
 }
