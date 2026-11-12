@@ -57,12 +57,16 @@ try {
     if (Test-Path -LiteralPath $GpgBin) { $env:Path = "$GpgBin;$env:Path" }
     $Gpgv = Get-Command gpgv.exe -ErrorAction Stop
   }
+  $PreviousGpgHome = $env:GNUPGHOME
+  $env:GNUPGHOME = $Temp
   Push-Location $Temp
   try {
     & $Gpgv.Source --keyring 'nodejs-active-release-keys.kbx' 'SHASUMS256.txt.sig' 'SHASUMS256.txt'
     $GpgvExitCode = $LASTEXITCODE
   } finally {
     Pop-Location
+    if ($null -eq $PreviousGpgHome) { Remove-Item Env:GNUPGHOME -ErrorAction SilentlyContinue }
+    else { $env:GNUPGHOME = $PreviousGpgHome }
   }
   if ($GpgvExitCode -ne 0) { throw 'Node.js SHASUMS256 detached signature verification failed.' }
 
