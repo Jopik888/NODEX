@@ -17,7 +17,7 @@ $PostgresSha256Url = "$PostgresUrl.sha256"
 $PostgresSha256Expected = '80379b2c04d51c30225532e0ae04509899141e9957ed096fe749d7fd9df8f82f'
 $NodeBase = "https://nodejs.org/dist/v$NodeVersion"
 $NodeZipName = "node-v$NodeVersion-win-x64.zip"
-$KuboBase = "https://dist.ipfs.tech/kubo/v$KuboVersion"
+$KuboBase = "https://github.com/ipfs/kubo/releases/download/v$KuboVersion"
 $KuboZipName = "kubo_v$($KuboVersion)_windows-amd64.zip"
 
 function Get-Download([string]$Url, [string]$Destination) {
@@ -184,7 +184,7 @@ try {
     $PostgresSignatureState = 'VERIFIED'
   }
 
-  # Kubo archive verified against the official dist.ipfs.tech SHA-512 sidecar.
+  # Kubo archive and SHA-512 sidecar are fetched from the official GitHub Release; both asset SHA-256 values are pinned to GitHub release metadata.
   $KuboZip = Join-Path $Temp $KuboZipName
   $KuboSidecar = Join-Path $Temp "$KuboZipName.sha512"
   Get-Download "$KuboBase/$KuboZipName" $KuboZip
