@@ -7,8 +7,10 @@ $Temp = Join-Path ([IO.Path]::GetTempPath()) ("nodex-runtime-" + [guid]::NewGuid
 $NodeVersion = '24.22.3'
 $PostgresVersion = '17.11'
 $KuboVersion = '0.43.1'
-$PostgresUrl = 'https://sbp.enterprisedb.com/getfile.jsp?fileid=1260569'
-$PostgresSha256Expected = 'b9424ee7bc60b52450ff910a3630225df32e633f3cb29c1d126d9299d59aea28'
+$PostgresArchiveName = 'postgresql-17.11-5-windows-x64-binaries.zip'
+$PostgresUrl = "https://get.enterprisedb.com/postgresql/$PostgresArchiveName"
+$PostgresSha256Url = "$PostgresUrl.sha256"
+$PostgresSha256Expected = '80379b2c04d51c30225532e0ae04509899141e9957ed096fe749d7fd9df8f82f'
 $NodeBase = "https://nodejs.org/dist/v$NodeVersion"
 $NodeZipName = "node-v$NodeVersion-win-x64.zip"
 $KuboBase = "https://dist.ipfs.tech/kubo/v$KuboVersion"
@@ -114,7 +116,15 @@ try {
   $NodeExeHash = Get-Sha256 (Join-Path $Assets 'runtime/node.exe')
 
   # PostgreSQL 17.11-4 portable binaries ZIP, pinned to EDB's published digest.
-  $PostgresZip = Join-Path $Temp 'postgresql-17.11-4-windows-x64-binaries.zip'
+  $PostgresZip = Join-Path $Temp $PostgresArchiveName
+  $PostgresHashFile = Join-Path $Temp "$PostgresArchiveName.sha256"
+  Get-Download $PostgresSha256Url $PostgresHashFile
+  $PublishedPostgresHashText = (Get-Content -LiteralPath $PostgresHashFile -Raw).Trim()
+  if ($PublishedPostgresHashText -notmatch '(?<hash>[a-fA-F0-9]{64})') { throw 'EDB PostgreSQL SHA-256 sidecar is malformed.' }
+  $PublishedPostgresHash = $Matches.hash.ToLowerInvariant()
+  if ($PublishedPostgresHash -ne $PostgresSha256Expected) {
+    throw "EDB published PostgreSQL checksum sidecar changed: expected $PostgresSha256Expected, got $PublishedPostgresHash"
+  }
   Get-Download $PostgresUrl $PostgresZip
   $PostgresActual = Get-Sha256 $PostgresZip
   if ($PostgresActual -ne $PostgresSha256Expected) {
@@ -190,7 +200,7 @@ try {
     generatedAtUtc = [DateTime]::UtcNow.ToString('o')
     components = [ordered]@{
       node = [ordered]@{ version = $NodeVersion; source = "$NodeBase/$NodeZipName"; archiveFile = $NodeZipName; file = 'runtime/node.exe'; sha256 = $NodeExeHash }
-      postgres = [ordered]@{ version = $PostgresVersion; source = $PostgresUrl; archiveFile = 'postgresql-17.11-4-windows-x64-binaries.zip'; file = 'postgres/bin/postgres.exe'; sha256 = $PostgresExeHash }
+      postgres = [ordered]@{ version = $PostgresVersion; source = $PostgresUrl; archiveFile = $PostgresArchiveName; file = 'postgres/bin/postgres.exe'; sha256 = $PostgresExeHash }
       kubo = [ordered]@{ version = $KuboVersion; source = "$KuboBase/$KuboZipName"; archiveFile = $KuboZipName; file = 'ipfs/ipfs.exe'; sha256 = $KuboExeHash }
     }
     archiveSha256 = [ordered]@{
