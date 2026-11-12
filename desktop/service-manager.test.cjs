@@ -58,3 +58,22 @@ test('backend shutdown uses IPC before forceful process termination', async () =
   assert.equal(killed, false);
   assert.equal(manager.children.has('backend'), false);
 });
+
+test('Kubo shutdown prefers the ipfs shutdown CLI with its private repository path', async () => {
+  const manager = new DesktopServiceManager({
+    app: {},
+    getResourcePath: () => '',
+    userDataPath: 'C:\\\\NODEX',
+  });
+  manager.paths = () => ({ ipfs: 'C:\\\\NODEX\\\\ipfs.exe' });
+  let invocation;
+  manager.run = async (executable, args, options) => {
+    invocation = { executable, args, env: options.env };
+    return { stdout: '', stderr: '' };
+  };
+
+  assert.equal(await manager.requestKuboShutdown(), true);
+  assert.equal(invocation.executable, 'C:\\\\NODEX\\\\ipfs.exe');
+  assert.deepEqual(invocation.args, ['shutdown']);
+  assert.equal(invocation.env.IPFS_PATH, path.join('C:\\\\NODEX', 'ipfs-repo'));
+});
