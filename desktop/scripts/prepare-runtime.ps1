@@ -56,7 +56,7 @@ try {
   }
   & $Gpgv.Source --keyring $NodeKeyring "$NodeSig" "$NodeSums"
   if ($LASTEXITCODE -ne 0) { throw 'Node.js SHASUMS256 detached signature verification failed.' }
-  $NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_ -match ([regex]::Escape($NodeZipName) + ' } | Select-Object -First 1
+$NodeSumLine = Get-Content -LiteralPath $NodeSums | Where-Object { $_.EndsWith($NodeZipName, [System.StringComparison]::Ordinal) } | Select-Object -First 1
   if (!$NodeSumLine -or $NodeSumLine -notmatch '^(?<hash>[a-fA-F0-9]{64})\s+\*?') {
     throw 'The signed Node.js SHASUMS file does not contain the pinned Windows x64 ZIP.'
   }
