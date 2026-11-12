@@ -41,12 +41,10 @@ try {
 
   # Node.js release signature and archive checksum.
   $NodeZip = Join-Path $Temp $NodeZipName
-  $NodeSums = Join-Path $Temp 'SHASUMS256.txt'
   $NodeSig = Join-Path $Temp 'SHASUMS256.txt.asc'
   $NodeVerifiedSums = Join-Path $Temp 'SHASUMS256.verified.txt'
   $NodeKeyring = Join-Path $Temp 'nodejs-active-release-keys.kbx'
   Get-Download "$NodeBase/$NodeZipName" $NodeZip
-  Get-Download "$NodeBase/SHASUMS256.txt" $NodeSums
   Get-Download "$NodeBase/SHASUMS256.txt.asc" $NodeSig
   Get-Download 'https://github.com/nodejs/release-keys/raw/refs/heads/main/gpg-only-active-keys/pubring.kbx' $NodeKeyring
 
@@ -63,11 +61,31 @@ try {
   }
   if (!$GpgvPath) { throw 'Native Windows GnuPG gpgv.exe could not be located after installation.' }
 
-  # Node.js documents the clear-signed .asc file as the canonical verification input.
-  & $GpgvPath --keyring="$NodeKeyring" --output="$NodeVerifiedSums" "$NodeSig"
-  $GpgvExitCode = $LASTEXITCODE
-  if ($GpgvExitCode -ne 0 -or !(Test-Path -LiteralPath $NodeVerifiedSums)) {
-    throw 'Node.js SHASUMS256.txt.asc signature verification failed.'
+  # Node.js documents a clear-signed .asc file on stdin; use byte-preserving
+  # stdin with the native Windows GnuPG executable and an explicit keyring.
+  $GpgStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
+  $GpgStartInfo.FileName = $GpgvPath
+  $GpgStartInfo.UseShellExecute = $false
+  $GpgStartInfo.CreateNoWindow = $true
+  $GpgStartInfo.RedirectStandardInput = $true
+  $GpgStartInfo.RedirectStandardError = $true
+  $GpgStartInfo.ArgumentList.Add("--keyring=$NodeKeyring")
+  $GpgStartInfo.ArgumentList.Add("--output=$NodeVerifiedSums")
+
+  $GpgProcess = [System.Diagnostics.Process]::new()
+  $GpgProcess.StartInfo = $GpgStartInfo
+  if (!$GpgProcess.Start()) { throw 'Unable to start native Windows GnuPG verifier.' }
+  try {
+    $SignatureBytes = [IO.File]::ReadAllBytes($NodeSig)
+    $GpgProcess.StandardInput.BaseStream.Write($SignatureBytes, 0, $SignatureBytes.Length)
+    $GpgProcess.StandardInput.Close()
+    $GpgProcess.WaitForExit()
+    $GpgStderr = $GpgProcess.StandardError.ReadToEnd()
+    if ($GpgProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $NodeVerifiedSums)) {
+      throw "Node.js SHASUMS256.txt.asc signature verification failed: $GpgStderr"
+    }
+  } finally {
+    $GpgProcess.Dispose()
   }
 
   $NodeSumLine = Get-Content -LiteralPath $NodeVerifiedSums |
