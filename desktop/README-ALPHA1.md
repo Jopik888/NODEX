@@ -15,7 +15,7 @@
 
 ## Closed Alpha signing policy
 
-The user explicitly approved unsigned Alpha 1 packaging. The installer and portable EXE are unsigned. EDB's PostgreSQL 17.11-5 portable archive may also contain unsigned EXE/DLL files. The staging script inspects every PE file under PostgreSQL `bin/` and `lib/`; invalid or untrusted signatures stop the build. If files are merely unsigned, the manifest records `NOT_SIGNED_INTERNAL_ALPHA`, and build preflight requires the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in plus `releaseChannel=closed-alpha`.
+The user explicitly approved unsigned Alpha 1 packaging. The installer and portable EXE are unsigned. EDB's PostgreSQL 17.11-5 portable archive may also contain unsigned EXE/DLL files. The staging script retains only PostgreSQL `bin/`, `lib/`, and `share/` runtime trees (excluding debug symbols and manuals); invalid or untrusted signatures stop the build. If files are merely unsigned, the manifest records `NOT_SIGNED_INTERNAL_ALPHA`, and build preflight requires the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in plus `releaseChannel=closed-alpha`.
 
 **Important:** Windows Smart App Control may block unsigned PostgreSQL binaries. This package is for closed Alpha testing only and is not public-release ready. Do not disable Windows security protections merely to make the installer run; report any block so we can select a properly signed PostgreSQL distribution or revise the packaging plan. Commercial Authenticode signing is deferred until public release as agreed.
 
