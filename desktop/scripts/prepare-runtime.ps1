@@ -44,9 +44,10 @@ try {
   $NodeSig = Join-Path $Temp 'SHASUMS256.txt.asc'
   $NodeVerifiedSums = Join-Path $Temp 'SHASUMS256.verified.txt'
   $NodeKeyring = Join-Path $Temp 'nodejs-active-release-keys.kbx'
+  $NodeReleaseKeyFingerprint = '5BE8A3F6C8A5C01D106C0AD820B1A390B168D356'
   Get-Download "$NodeBase/$NodeZipName" $NodeZip
   Get-Download "$NodeBase/SHASUMS256.txt.asc" $NodeSig
-  Get-Download 'https://github.com/nodejs/release-keys/raw/refs/heads/main/gpg-only-active-keys/pubring.kbx' $NodeKeyring
+  Get-Download 'https://raw.githubusercontent.com/nodejs/release-keys/481637f813e912c4aa3622d7964ab426c97b8e8d/gpg-only-active-keys/pubring.kbx' $NodeKeyring
 
   # Prefer the native Windows GnuPG binary. Git for Windows ships an MSYS gpgv
   # whose path translation can corrupt Windows absolute keyring paths.
@@ -56,7 +57,7 @@ try {
   )
   $GpgvPath = $GpgvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   if (!$GpgvPath) {
-    choco install gnupg -y --no-progress
+    choco install gnupg --version=2.5.21 -y --no-progress
     $GpgvPath = $GpgvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   }
   if (!$GpgvPath) { throw 'Native Windows GnuPG gpgv.exe could not be located after installation.' }
@@ -69,6 +70,8 @@ try {
   $GpgStartInfo.CreateNoWindow = $true
   $GpgStartInfo.RedirectStandardInput = $true
   $GpgStartInfo.RedirectStandardError = $true
+  $GpgStartInfo.RedirectStandardOutput = $true
+  $GpgStartInfo.ArgumentList.Add('--status-fd=1')
   $GpgStartInfo.ArgumentList.Add("--keyring=$NodeKeyring")
   $GpgStartInfo.ArgumentList.Add("--output=$NodeVerifiedSums")
 
@@ -80,9 +83,13 @@ try {
     $GpgProcess.StandardInput.BaseStream.Write($SignatureBytes, 0, $SignatureBytes.Length)
     $GpgProcess.StandardInput.Close()
     $GpgProcess.WaitForExit()
+    $GpgStdout = $GpgProcess.StandardOutput.ReadToEnd()
     $GpgStderr = $GpgProcess.StandardError.ReadToEnd()
     if ($GpgProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $NodeVerifiedSums)) {
       throw "Node.js SHASUMS256.txt.asc signature verification failed: $GpgStderr"
+    }
+    if ($GpgStdout -notmatch ('(?m)^\[GNUPG:\] VALIDSIG ' + $NodeReleaseKeyFingerprint + '(?:\s|$)')) {
+      throw "Node.js SHASUMS signature is valid but was not signed by the pinned release key $NodeReleaseKeyFingerprint. GPG status: $GpgStdout"
     }
   } finally {
     $GpgProcess.Dispose()
