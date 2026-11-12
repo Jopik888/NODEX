@@ -171,6 +171,126 @@ try {
   foreach ($required in @('bin', 'lib', 'share')) {
     Copy-Item -Path (Join-Path $PostgresRoot $required) -Destination (Join-Path $Assets 'postgres') -Recurse -Force
   }
+  # Preserve the upstream PostgreSQL/EDB license and notice files even though
+  # non-runtime documentation and development headers are not shipped.
+  $PostgresLicenseFiles = @(Get-ChildItem -LiteralPath $PostgresRoot -File |
+    Where-Object { $_.Name -match '^(LICENSE|COPYING|COPYRIGHT|NOTICE)([._-].*)?
+  Get-ChildItem -LiteralPath (Join-Path $Assets 'postgres') -Filter '*.pdb' -Recurse -File |
+    Remove-Item -Force
+  # PostgreSQL's packaged manuals are not used by initdb/server/pg_ctl.
+  foreach ($documentation in @(
+    (Join-Path $Assets 'postgres/share/doc'),
+    (Join-Path $Assets 'postgres/share/man')
+  )) {
+    if (Test-Path -LiteralPath $documentation) {
+      Remove-Item -LiteralPath $documentation -Recurse -Force
+    }
+  }
+  $PostgresExeHash = Get-Sha256 (Join-Path $Assets 'postgres/bin/postgres.exe')
+
+  $PgPeFiles = @(Get-ChildItem -LiteralPath @((Join-Path $Assets 'postgres/bin'), (Join-Path $Assets 'postgres/lib')) -Recurse -File |
+    Where-Object { $_.Extension -in '.exe', '.dll' })
+  if ($PgPeFiles.Count -eq 0) { throw 'No PostgreSQL EXE/DLL files were found for signature inspection.' }
+  $PgSignatureStatuses = @($PgPeFiles | ForEach-Object {
+    [string](Get-AuthenticodeSignature -LiteralPath $_.FullName).Status
+  } | Sort-Object -Unique)
+  $PgInvalid = @($PgSignatureStatuses | Where-Object { $_ -notin @('Valid', 'NotSigned') })
+  if ($PgInvalid.Count -gt 0) { throw "EDB PostgreSQL binaries have invalid/untrusted signatures: $($PgInvalid -join ', ')" }
+  if ($PgSignatureStatuses -contains 'NotSigned') {
+    $PostgresSignatureState = 'NOT_SIGNED_INTERNAL_ALPHA'
+    Write-Warning 'EDB PostgreSQL contains unsigned PE files. This package is closed-Alpha only; Windows Smart App Control may block PostgreSQL binaries.'
+  } else {
+    $PostgresSignatureState = 'VERIFIED'
+  }
+
+  # Kubo archive and SHA-512 sidecar are fetched from the official GitHub Release; both asset SHA-256 values are pinned to GitHub release metadata.
+  $KuboZip = Join-Path $Temp $KuboZipName
+  $KuboSidecar = Join-Path $Temp "$KuboZipName.sha512"
+  Get-Download "$KuboBase/$KuboZipName" $KuboZip
+  Get-Download "$KuboBase/$KuboZipName.sha512" $KuboSidecar
+  $KuboSidecarSha256 = Get-Sha256 $KuboSidecar
+  if ($KuboSidecarSha256 -ne $KuboSidecarSha256Expected) {
+    throw "Kubo SHA-512 sidecar file digest mismatch: expected $KuboSidecarSha256Expected, got $KuboSidecarSha256"
+  }
+  $KuboZipSha256 = Get-Sha256 $KuboZip
+  if ($KuboZipSha256 -ne $KuboZipSha256Expected) {
+    throw "Kubo ZIP SHA-256 mismatch against pinned GitHub release asset digest: expected $KuboZipSha256Expected, got $KuboZipSha256"
+  }
+  $KuboSidecarText = (Get-Content -LiteralPath $KuboSidecar -Raw).Trim()
+  if ($KuboSidecarText -notmatch '(?<hash>[a-fA-F0-9]{128})') { throw 'Official Kubo SHA-512 sidecar is malformed.' }
+  $KuboExpectedSha512 = $Matches.hash.ToLowerInvariant()
+  $KuboActualSha512 = (Get-FileHash -LiteralPath $KuboZip -Algorithm SHA512).Hash.ToLowerInvariant()
+  Write-Host "Kubo 0.43.1 ZIP SHA-512 computed: $KuboActualSha512"
+  if ($KuboActualSha512 -ne $KuboExpectedSha512) {
+    throw "Kubo ZIP SHA-512 mismatch: expected $KuboExpectedSha512, got $KuboActualSha512"
+  }
+  $KuboExtract = Join-Path $Temp 'kubo-extract'
+  Expand-CheckedZip $KuboZip $KuboExtract
+  $KuboExe = Get-ChildItem -LiteralPath $KuboExtract -Filter ipfs.exe -Recurse | Select-Object -First 1
+  if (!$KuboExe) { throw 'ipfs.exe was not found in the verified Kubo archive.' }
+  Copy-Item -LiteralPath $KuboExe.FullName -Destination (Join-Path $Assets 'ipfs/ipfs.exe')
+  $KuboRoot = $KuboExe.Directory.FullName
+  foreach ($license in @('LICENSE', 'LICENSE-APACHE', 'LICENSE-MIT', 'README.md')) {
+    $licensePath = Join-Path $KuboRoot $license
+    if (Test-Path -LiteralPath $licensePath) {
+      Copy-Item -LiteralPath $licensePath -Destination (Join-Path $Assets "ipfs/$license")
+    }
+  }
+  $KuboExeHash = Get-Sha256 (Join-Path $Assets 'ipfs/ipfs.exe')
+
+  $NodeVersionOutput = (& (Join-Path $Assets 'runtime/node.exe') --version | Out-String).Trim()
+  $PostgresVersionOutput = (& (Join-Path $Assets 'postgres/bin/postgres.exe') --version | Out-String).Trim()
+  $KuboVersionOutput = (& (Join-Path $Assets 'ipfs/ipfs.exe') --version | Out-String).Trim()
+  if ($NodeVersionOutput -ne "v$NodeVersion") { throw "Unexpected Node.js version: $NodeVersionOutput" }
+  if ($PostgresVersionOutput -ne "postgres (PostgreSQL) $PostgresVersion") { throw "Unexpected PostgreSQL version: $PostgresVersionOutput" }
+  if ($KuboVersionOutput -ne "ipfs version $KuboVersion") { throw "Unexpected Kubo version: $KuboVersionOutput" }
+
+  $Manifest = [ordered]@{
+    schemaVersion = 1
+    platform = 'win32-x64'
+    releaseChannel = 'closed-alpha'
+    installerSigning = 'unsigned'
+    generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    components = [ordered]@{
+      node = [ordered]@{ version = $NodeVersion; source = "$NodeBase/$NodeZipName"; archiveFile = $NodeZipName; file = 'runtime/node.exe'; sha256 = $NodeExeHash }
+      postgres = [ordered]@{ version = $PostgresVersion; source = $PostgresUrl; archiveFile = $PostgresArchiveName; file = 'postgres/bin/postgres.exe'; sha256 = $PostgresExeHash }
+      kubo = [ordered]@{ version = $KuboVersion; source = "$KuboBase/$KuboZipName"; archiveFile = $KuboZipName; file = 'ipfs/ipfs.exe'; sha256 = $KuboExeHash }
+    }
+    archiveSha256 = [ordered]@{
+      nodeWindowsZip = $NodeActual
+      postgresBinariesZip = $PostgresActual
+      kuboWindowsZip = $KuboZipSha256
+    }
+    integrityVerification = [ordered]@{
+      nodeShasumsSignature = 'VERIFIED'
+      postgresArchiveSha256 = 'VERIFIED'
+      postgresAuthenticode = $PostgresSignatureState
+      kuboArchiveSha256 = 'VERIFIED'
+    }
+    licenseFiles = @('runtime/LICENSE', 'ipfs/LICENSE', 'ipfs/LICENSE-APACHE', 'ipfs/LICENSE-MIT') + $PostgresLicenseRelativePaths
+  }
+  $ManifestPath = Join-Path $Assets 'RUNTIME-MANIFEST.json'
+  [IO.File]::WriteAllText($ManifestPath, ($Manifest | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
+  Write-Host 'Runtime staging completed. Verified archives, signatures, executable hashes and exact versions.'
+  Write-Host "Node.js executable SHA-256: $NodeExeHash"
+  Write-Host "PostgreSQL executable SHA-256: $PostgresExeHash"
+  Write-Host "Kubo executable SHA-256: $KuboExeHash"
+  Write-Host "PostgreSQL Authenticode state: $PostgresSignatureState"
+}
+finally {
+  if (Test-Path -LiteralPath $Temp) {
+    Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+ })
+  if ($PostgresLicenseFiles.Count -eq 0) {
+    throw 'EDB PostgreSQL archive contains no recognizable root license/notice file.'
+  }
+  $PostgresLicenseRelativePaths = @()
+  foreach ($licenseFile in $PostgresLicenseFiles) {
+    Copy-Item -LiteralPath $licenseFile.FullName -Destination (Join-Path $Assets 'postgres') -Force
+    $PostgresLicenseRelativePaths += "postgres/$($licenseFile.Name)"
+  }
   # PDB files are debug symbols, not runtime dependencies.
   Get-ChildItem -LiteralPath (Join-Path $Assets 'postgres') -Filter '*.pdb' -Recurse -File |
     Remove-Item -Force
