@@ -102,12 +102,15 @@ try {
   $GpgProcess.StartInfo = $GpgStartInfo
   if (!$GpgProcess.Start()) { throw 'Unable to start native Windows GnuPG verifier.' }
   try {
+    # Drain both output streams asynchronously before writing stdin to avoid pipe deadlocks.
+    $GpgStdoutTask = $GpgProcess.StandardOutput.ReadToEndAsync()
+    $GpgStderrTask = $GpgProcess.StandardError.ReadToEndAsync()
     $SignatureBytes = [IO.File]::ReadAllBytes($NodeSig)
     $GpgProcess.StandardInput.BaseStream.Write($SignatureBytes, 0, $SignatureBytes.Length)
     $GpgProcess.StandardInput.Close()
     $GpgProcess.WaitForExit()
-    $GpgStdout = $GpgProcess.StandardOutput.ReadToEnd()
-    $GpgStderr = $GpgProcess.StandardError.ReadToEnd()
+    $GpgStdout = $GpgStdoutTask.GetAwaiter().GetResult()
+    $GpgStderr = $GpgStderrTask.GetAwaiter().GetResult()
     if ($GpgProcess.ExitCode -ne 0 -or !(Test-Path -LiteralPath $NodeVerifiedSums)) {
       throw "Node.js SHASUMS256.txt.asc signature verification failed: $GpgStderr"
     }
@@ -125,8 +128,9 @@ try {
   $NodeExpected = ($NodeSumLine -split '\s+')[0].ToLowerInvariant()
   if ($NodeExpected -notmatch '^[a-f0-9]{64}$') { throw 'The Node.js ZIP checksum entry is malformed.' }
   $NodeActual = Get-Sha256 $NodeZip
-  Write-Host "Node.js release signature and ZIP SHA-256 verified: $NodeActual"
-  if ($NodeActual -ne $NodeExpected) { throw "Node.js ZIP SHA-256 mismatch: expected $NodeExpected, got $NodeActual" }
+  if ($NodeActual -ne $NodeExpected) { throw "Node.js ZIP SHA-256 mismatch against signed SHASUMS: expected $NodeExpected, got $NodeActual" }
+  if ($NodeActual -ne $NodeZipSha256Expected) { throw "Node.js ZIP SHA-256 mismatch against the pinned release digest: expected $NodeZipSha256Expected, got $NodeActual" }
+  Write-Host "Node.js release signature and both ZIP SHA-256 checks verified: $NodeActual"
 
   $NodeExtract = Join-Path $Temp 'node-extract'
   Expand-CheckedZip $NodeZip $NodeExtract
