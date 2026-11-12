@@ -115,7 +115,7 @@ try {
   if ($NodeLicense) { Copy-Item -LiteralPath $NodeLicense.FullName -Destination (Join-Path $Assets 'runtime/LICENSE') }
   $NodeExeHash = Get-Sha256 (Join-Path $Assets 'runtime/node.exe')
 
-  # PostgreSQL 17.11-4 portable binaries ZIP, pinned to EDB's published digest.
+  # PostgreSQL 17.11-5 portable binaries ZIP, pinned to EDB's published digest and sidecar.
   $PostgresZip = Join-Path $Temp $PostgresArchiveName
   $PostgresHashFile = Join-Path $Temp "$PostgresArchiveName.sha256"
   Get-Download $PostgresSha256Url $PostgresHashFile
