@@ -225,7 +225,7 @@ class DesktopServiceManager {
     const p = this.paths();
     const repo = path.join(this.userDataPath, 'ipfs-repo');
     await fsp.mkdir(repo, { recursive: true });
-    const env = { IPFS_PATH: repo };
+    const env = { ...process.env, IPFS_PATH: repo };
     if (!fs.existsSync(path.join(repo, 'config'))) {
       await this.run(p.ipfs, ['init'], { env });
     }
