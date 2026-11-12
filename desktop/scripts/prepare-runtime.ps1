@@ -42,35 +42,35 @@ try {
   # Node.js release signature and archive checksum.
   $NodeZip = Join-Path $Temp $NodeZipName
   $NodeSums = Join-Path $Temp 'SHASUMS256.txt'
-  $NodeSig = Join-Path $Temp 'SHASUMS256.txt.sig'
+  $NodeSig = Join-Path $Temp 'SHASUMS256.txt.asc'
+  $NodeVerifiedSums = Join-Path $Temp 'SHASUMS256.verified.txt'
   $NodeKeyring = Join-Path $Temp 'nodejs-active-release-keys.kbx'
   Get-Download "$NodeBase/$NodeZipName" $NodeZip
   Get-Download "$NodeBase/SHASUMS256.txt" $NodeSums
-  Get-Download "$NodeBase/SHASUMS256.txt.sig" $NodeSig
+  Get-Download "$NodeBase/SHASUMS256.txt.asc" $NodeSig
   Get-Download 'https://github.com/nodejs/release-keys/raw/refs/heads/main/gpg-only-active-keys/pubring.kbx' $NodeKeyring
 
-  $Gpgv = Get-Command gpgv.exe -ErrorAction SilentlyContinue
-  if (!$Gpgv) { $Gpgv = Get-Command gpgv -ErrorAction SilentlyContinue }
-  if (!$Gpgv) {
+  # Prefer the native Windows GnuPG binary. Git for Windows ships an MSYS gpgv
+  # whose path translation can corrupt Windows absolute keyring paths.
+  $GpgvCandidates = @(
+    'C:\Program Files (x86)\GnuPG\bin\gpgv.exe',
+    'C:\Program Files\GnuPG\bin\gpgv.exe'
+  )
+  $GpgvPath = $GpgvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  if (!$GpgvPath) {
     choco install gnupg -y --no-progress
-    $GpgBin = 'C:\Program Files (x86)\GnuPG\bin'
-    if (Test-Path -LiteralPath $GpgBin) { $env:Path = "$GpgBin;$env:Path" }
-    $Gpgv = Get-Command gpgv.exe -ErrorAction Stop
+    $GpgvPath = $GpgvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   }
-  $PreviousGpgHome = $env:GNUPGHOME
-  $env:GNUPGHOME = $Temp
-  Push-Location $Temp
-  try {
-    & $Gpgv.Source --keyring 'nodejs-active-release-keys.kbx' 'SHASUMS256.txt.sig' 'SHASUMS256.txt'
-    $GpgvExitCode = $LASTEXITCODE
-  } finally {
-    Pop-Location
-    if ($null -eq $PreviousGpgHome) { Remove-Item Env:GNUPGHOME -ErrorAction SilentlyContinue }
-    else { $env:GNUPGHOME = $PreviousGpgHome }
-  }
-  if ($GpgvExitCode -ne 0) { throw 'Node.js SHASUMS256 detached signature verification failed.' }
+  if (!$GpgvPath) { throw 'Native Windows GnuPG gpgv.exe could not be located after installation.' }
 
-  $NodeSumLine = Get-Content -LiteralPath $NodeSums |
+  # Node.js documents the clear-signed .asc file as the canonical verification input.
+  & $GpgvPath --keyring="$NodeKeyring" --output="$NodeVerifiedSums" "$NodeSig"
+  $GpgvExitCode = $LASTEXITCODE
+  if ($GpgvExitCode -ne 0 -or !(Test-Path -LiteralPath $NodeVerifiedSums)) {
+    throw 'Node.js SHASUMS256.txt.asc signature verification failed.'
+  }
+
+  $NodeSumLine = Get-Content -LiteralPath $NodeVerifiedSums |
     Where-Object { $_.EndsWith($NodeZipName, [StringComparison]::Ordinal) } |
     Select-Object -First 1
   if (!$NodeSumLine) { throw 'The signed Node.js SHASUMS file does not list the pinned Windows x64 ZIP.' }
