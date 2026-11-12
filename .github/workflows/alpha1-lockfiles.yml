@@ -80,7 +80,8 @@ jobs:
           node --check setup-renderer.js
           node --check preflight.cjs
           node --check runtime-integrity.cjs
-          node --test runtime-integrity.test.cjs
+          node --check service-manager.test.cjs
+          node --test runtime-integrity.test.cjs service-manager.test.cjs
           $tokens = $null
           $parseErrors = $null
           [System.Management.Automation.Language.Parser]::ParseFile('scripts/prepare-runtime.ps1', [ref]$tokens, [ref]$parseErrors) | Out-Null
