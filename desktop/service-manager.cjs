@@ -278,18 +278,63 @@ class DesktopServiceManager {
     }, 'NODEX backend', 20000);
   }
 
+  async waitForChildExit(child, timeoutMs = 10000) {
+    if (child.exitCode !== null || child.signalCode !== null) return true;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      child.once('close', () => { clearTimeout(timer); resolve(true); });
+    });
+  }
+
+  async requestKuboShutdown() {
+    return new Promise((resolve) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: 5001,
+        path: '/api/v0/shutdown',
+        method: 'POST',
+        timeout: 2500,
+      }, (res) => {
+        res.resume();
+        resolve(res.statusCode >= 200 && res.statusCode < 500);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.end();
+    });
+  }
+
+  async stopChild(name, { kuboShutdown = false } = {}) {
+    const child = this.children.get(name);
+    if (!child) return;
+    if (child.exitCode !== null || child.signalCode !== null) {
+      this.children.delete(name);
+      return;
+    }
+
+    if (kuboShutdown) await this.requestKuboShutdown();
+    else {
+      try { child.kill('SIGTERM'); } catch (_) {}
+    }
+
+    const stopped = await this.waitForChildExit(child, kuboShutdown ? 12000 : 10000);
+    if (!stopped && child.exitCode === null && child.signalCode === null) {
+      try { child.kill(); } catch (_) {}
+      await this.waitForChildExit(child, 5000);
+    }
+    this.children.delete(name);
+  }
+
   async stop() {
     this.stopping = true;
-    const running = [...this.children.entries()];
-    for (const [, child] of running) {
-      try { if (child.exitCode === null) child.kill(); } catch (_) {}
+    // Stop API consumers first, then ask Kubo to shut down through its loopback API.
+    await this.stopChild('backend');
+    await this.stopChild('ipfs', { kuboShutdown: true });
+
+    for (const [name] of [...this.children.entries()]) {
+      await this.stopChild(name);
     }
-    await Promise.all(running.map(([, child]) => new Promise((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) return resolve();
-      const timer = setTimeout(resolve, 5000);
-      child.once('close', () => { clearTimeout(timer); resolve(); });
-    })));
-    this.children.clear();
+
     if (this.startedPostgres) {
       const p = this.paths();
       await this.run(path.join(p.postgresBin, 'pg_ctl.exe'), [
