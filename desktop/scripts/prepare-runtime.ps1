@@ -57,8 +57,14 @@ try {
     if (Test-Path -LiteralPath $GpgBin) { $env:Path = "$GpgBin;$env:Path" }
     $Gpgv = Get-Command gpgv.exe -ErrorAction Stop
   }
-  & $Gpgv.Source --keyring $NodeKeyring $NodeSig $NodeSums
-  if ($LASTEXITCODE -ne 0) { throw 'Node.js SHASUMS256 detached signature verification failed.' }
+  Push-Location $Temp
+  try {
+    & $Gpgv.Source --keyring 'nodejs-active-release-keys.kbx' 'SHASUMS256.txt.sig' 'SHASUMS256.txt'
+    $GpgvExitCode = $LASTEXITCODE
+  } finally {
+    Pop-Location
+  }
+  if ($GpgvExitCode -ne 0) { throw 'Node.js SHASUMS256 detached signature verification failed.' }
 
   $NodeSumLine = Get-Content -LiteralPath $NodeSums |
     Where-Object { $_.EndsWith($NodeZipName, [StringComparison]::Ordinal) } |
