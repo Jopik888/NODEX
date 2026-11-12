@@ -66,6 +66,18 @@ test('rejects runtime components without verified source/signature states', (t) 
     .some((error) => error.includes('postgresAuthenticode must be VERIFIED')));
 });
 
+test('allows unsigned PostgreSQL only in an explicitly marked closed Alpha build', (t) => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+  f.manifest.releaseChannel = 'closed-alpha';
+  f.manifest.installerSigning = 'unsigned';
+  f.manifest.integrityVerification.postgresAuthenticode = 'NOT_SIGNED_INTERNAL_ALPHA';
+  assert.deepEqual(validateRuntimeManifest({ manifest: f.manifest, assetsRoot: f.root }), []);
+  f.manifest.releaseChannel = 'public';
+  assert.ok(validateRuntimeManifest({ manifest: f.manifest, assetsRoot: f.root })
+    .some((error) => error.includes('postgresAuthenticode')));
+});
+
 test('rejects a missing archive digest and path traversal outside the assets root', (t) => {
   const f = fixture();
   t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
