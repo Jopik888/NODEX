@@ -69,6 +69,7 @@ const postgresBin = path.join(__dirname, 'assets', 'postgres', 'bin');
 const postgresLib = path.join(__dirname, 'assets', 'postgres', 'lib');
 const signatureScript = [
   "$ErrorActionPreference = 'Stop'",
+  "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop",
   "$roots = @($env:NODEX_PG_BIN, $env:NODEX_PG_LIB)",
   "$files = @(Get-ChildItem -LiteralPath $roots -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })",
   "if ($files.Count -eq 0) { Write-Error 'No PostgreSQL executable or DLL files were found.'; exit 1 }",
@@ -76,7 +77,7 @@ const signatureScript = [
   "if (@($statuses | Where-Object { $_ -notin @('Valid', 'NotSigned') }).Count -gt 0) { Write-Error 'PostgreSQL binaries contain an invalid or untrusted Authenticode signature.'; exit 1 }",
   "if (@($statuses | Where-Object { $_ -eq 'NotSigned' }).Count -gt 0) { Write-Output 'NOT_SIGNED_INTERNAL_ALPHA' } else { Write-Output 'VERIFIED' }",
 ].join('; ');
-const signatures = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', signatureScript], {
+const signatures = spawnSync('pwsh.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', signatureScript], {
   encoding: 'utf8',
   windowsHide: true,
   maxBuffer: 4 * 1024 * 1024,
