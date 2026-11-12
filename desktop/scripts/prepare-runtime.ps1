@@ -166,7 +166,23 @@ try {
       throw "EDB archive is missing required PostgreSQL folder: $required"
     }
   }
-  Copy-Item -Path (Join-Path $PostgresRoot '*') -Destination (Join-Path $Assets 'postgres') -Recurse -Force
+  # Only ship the runtime tree. EDB's archive also contains development headers,
+  # documentation and other material that is not needed to run a local cluster.
+  foreach ($required in @('bin', 'lib', 'share')) {
+    Copy-Item -Path (Join-Path $PostgresRoot $required) -Destination (Join-Path $Assets 'postgres') -Recurse -Force
+  }
+  # PDB files are debug symbols, not runtime dependencies.
+  Get-ChildItem -LiteralPath (Join-Path $Assets 'postgres') -Filter '*.pdb' -Recurse -File |
+    Remove-Item -Force
+  # PostgreSQL's packaged manuals are not used by initdb/server/pg_ctl.
+  foreach ($documentation in @(
+    (Join-Path $Assets 'postgres/share/doc'),
+    (Join-Path $Assets 'postgres/share/man')
+  )) {
+    if (Test-Path -LiteralPath $documentation) {
+      Remove-Item -LiteralPath $documentation -Recurse -Force
+    }
+  }
   $PostgresExeHash = Get-Sha256 (Join-Path $Assets 'postgres/bin/postgres.exe')
 
   $PgPeFiles = @(Get-ChildItem -LiteralPath @((Join-Path $Assets 'postgres/bin'), (Join-Path $Assets 'postgres/lib')) -Recurse -File |
