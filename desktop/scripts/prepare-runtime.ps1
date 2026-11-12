@@ -5,8 +5,12 @@ $DesktopRoot = Split-Path -Parent $PSScriptRoot
 $Assets = Join-Path $DesktopRoot 'assets'
 $Temp = Join-Path ([IO.Path]::GetTempPath()) ("nodex-runtime-" + [guid]::NewGuid().ToString('N'))
 $NodeVersion = '24.22.3'
+$NodeZipSha256Expected = 'e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f'
+$NodeExeSha256Expected = '86fc4785327db5f5c7558dc6156c543b433c313e813a222e088086222ab4afa6'
 $PostgresVersion = '17.11'
 $KuboVersion = '0.43.1'
+$KuboZipSha256Expected = 'c25871516dec4d97ce1d160a26c1e3fdad294cb0eea065c0c0343bcfca86c524'
+$KuboSidecarSha256Expected = '99ded6a03faa39a92417f15781da332b8ed014840e089cca354cea347ce40717'
 $PostgresArchiveName = 'postgresql-17.11-5-windows-x64-binaries.zip'
 $PostgresUrl = "https://get.enterprisedb.com/postgresql/$PostgresArchiveName"
 $PostgresSha256Url = "$PostgresUrl.sha256"
@@ -132,6 +136,7 @@ try {
   $NodeLicense = Get-ChildItem -LiteralPath $NodeExtract -Filter LICENSE -Recurse | Select-Object -First 1
   if ($NodeLicense) { Copy-Item -LiteralPath $NodeLicense.FullName -Destination (Join-Path $Assets 'runtime/LICENSE') }
   $NodeExeHash = Get-Sha256 (Join-Path $Assets 'runtime/node.exe')
+  if ($NodeExeHash -ne $NodeExeSha256Expected) { throw "Staged Node.js executable digest mismatch: expected $NodeExeSha256Expected, got $NodeExeHash" }
 
   # PostgreSQL 17.11-5 portable binaries ZIP, pinned to EDB's published digest and sidecar.
   $PostgresZip = Join-Path $Temp $PostgresArchiveName
@@ -183,6 +188,14 @@ try {
   $KuboSidecar = Join-Path $Temp "$KuboZipName.sha512"
   Get-Download "$KuboBase/$KuboZipName" $KuboZip
   Get-Download "$KuboBase/$KuboZipName.sha512" $KuboSidecar
+  $KuboSidecarSha256 = Get-Sha256 $KuboSidecar
+  if ($KuboSidecarSha256 -ne $KuboSidecarSha256Expected) {
+    throw "Kubo SHA-512 sidecar file digest mismatch: expected $KuboSidecarSha256Expected, got $KuboSidecarSha256"
+  }
+  $KuboZipSha256 = Get-Sha256 $KuboZip
+  if ($KuboZipSha256 -ne $KuboZipSha256Expected) {
+    throw "Kubo ZIP SHA-256 mismatch against pinned GitHub release asset digest: expected $KuboZipSha256Expected, got $KuboZipSha256"
+  }
   $KuboSidecarText = (Get-Content -LiteralPath $KuboSidecar -Raw).Trim()
   if ($KuboSidecarText -notmatch '(?<hash>[a-fA-F0-9]{128})') { throw 'Official Kubo SHA-512 sidecar is malformed.' }
   $KuboExpectedSha512 = $Matches.hash.ToLowerInvariant()
@@ -226,7 +239,7 @@ try {
     archiveSha256 = [ordered]@{
       nodeWindowsZip = $NodeActual
       postgresBinariesZip = $PostgresActual
-      kuboWindowsZip = (Get-Sha256 $KuboZip)
+      kuboWindowsZip = $KuboZipSha256
     }
     integrityVerification = [ordered]@{
       nodeShasumsSignature = 'VERIFIED'
