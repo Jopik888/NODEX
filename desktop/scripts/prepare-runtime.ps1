@@ -171,18 +171,23 @@ try {
   foreach ($required in @('bin', 'lib', 'share')) {
     Copy-Item -Path (Join-Path $PostgresRoot $required) -Destination (Join-Path $Assets 'postgres') -Recurse -Force
   }
-  # Preserve the upstream PostgreSQL/EDB license and notice files even though
-  # non-runtime documentation and development headers are not shipped.
-  $PostgresLicenseFiles = @(Get-ChildItem -LiteralPath $PostgresRoot -File |
-    Where-Object { $_.Name -match '^(LICENSE|COPYING|COPYRIGHT|NOTICE)' })
+  # Preserve all upstream PostgreSQL/EDB license and notice files wherever
+  # the vendor archive stores them, retaining their relative directory paths.
+  $PostgresLicenseFiles = @(Get-ChildItem -LiteralPath $PostgresExtract -File -Recurse |
+    Where-Object { $_.Name -match '(?i)(license|copying|copyright|notice)' })
   if ($PostgresLicenseFiles.Count -eq 0) {
-    throw 'EDB PostgreSQL archive contains no recognizable root license/notice file.'
+    throw 'EDB PostgreSQL archive contains no recognizable license/notice files.'
   }
   $PostgresLicenseRelativePaths = @()
   foreach ($licenseFile in $PostgresLicenseFiles) {
-    Copy-Item -LiteralPath $licenseFile.FullName -Destination (Join-Path $Assets 'postgres') -Force
-    $PostgresLicenseRelativePaths += ('postgres/' + $licenseFile.Name)
+    $licenseRelativePath = [IO.Path]::GetRelativePath($PostgresExtract, $licenseFile.FullName)
+    $licenseDestination = Join-Path (Join-Path $Assets 'postgres/licenses') $licenseRelativePath
+    $licenseDestinationDirectory = Split-Path -Parent $licenseDestination
+    New-Item -ItemType Directory -Force -Path $licenseDestinationDirectory | Out-Null
+    Copy-Item -LiteralPath $licenseFile.FullName -Destination $licenseDestination -Force
+    $PostgresLicenseRelativePaths += ('postgres/licenses/' + ($licenseRelativePath -replace '\\', '/'))
   }
+  Write-Host ('Preserved {0} PostgreSQL license/notice files.' -f $PostgresLicenseFiles.Count)
   Get-ChildItem -LiteralPath (Join-Path $Assets 'postgres') -Filter '*.pdb' -Recurse -File |
     Remove-Item -Force
   # PostgreSQL's packaged manuals are not used by initdb/server/pg_ctl.
