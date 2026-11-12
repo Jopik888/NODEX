@@ -30,7 +30,7 @@
   "archiveSha256": {
     "nodeWindowsZip": "e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f",
     "postgresBinariesZip": "80379b2c04d51c30225532e0ae04509899141e9957ed096fe749d7fd9df8f82f",
-    "kuboWindowsZip": ""
+    "kuboWindowsZip": "c25871516dec4d97ce1d160a26c1e3fdad294cb0eea065c0c0343bcfca86c524"
   },
   "integrityVerification": {
     "nodeShasumsSignature": "PENDING",
