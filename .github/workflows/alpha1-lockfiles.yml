@@ -1,9 +1,6 @@
 name: NODEX Alpha 1 validation
 
 on:
-  push:
-    branches:
-      - feature/alpha1-build-preparation
   pull_request:
     branches:
       - main
