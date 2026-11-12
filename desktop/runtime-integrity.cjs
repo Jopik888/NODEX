@@ -7,10 +7,9 @@ const EXPECTED_COMPONENTS = Object.freeze({
   postgres: { version: '17.11', file: 'postgres/bin/postgres.exe' },
   kubo: { version: '0.43.1', file: 'ipfs/ipfs.exe' },
 });
-const REQUIRED_INTEGRITY = Object.freeze([
+const REQUIRED_VERIFIED = Object.freeze([
   'nodeShasumsSignature',
   'postgresArchiveSha256',
-  'postgresAuthenticode',
   'kuboArchiveSha256',
 ]);
 const REQUIRED_ARCHIVES = Object.freeze([
@@ -20,8 +19,9 @@ const REQUIRED_ARCHIVES = Object.freeze([
 ]);
 
 /**
- * Validate manifest provenance and the exact staged runtime bytes.
- * Returns a list of actionable errors; it never modifies files.
+ * Validate release provenance and exact staged runtime bytes.
+ * Unsigned EDB PostgreSQL PE files are permitted only for a clearly marked,
+ * closed Alpha build; the manifest and build preflight must both opt in.
  */
 function validateRuntimeManifest({ manifest, assetsRoot }) {
   const errors = [];
@@ -35,10 +35,18 @@ function validateRuntimeManifest({ manifest, assetsRoot }) {
     errors.push('Runtime manifest schemaVersion/platform is invalid for NODEX Windows x64.');
   }
 
-  for (const name of REQUIRED_INTEGRITY) {
+  for (const name of REQUIRED_VERIFIED) {
     if (manifest.integrityVerification?.[name] !== 'VERIFIED') {
       errors.push(`integrityVerification.${name} must be VERIFIED.`);
     }
+  }
+
+  const postgresSignature = manifest.integrityVerification?.postgresAuthenticode;
+  const unsignedAlphaAllowed = manifest.releaseChannel === 'closed-alpha'
+    && manifest.installerSigning === 'unsigned'
+    && postgresSignature === 'NOT_SIGNED_INTERNAL_ALPHA';
+  if (postgresSignature !== 'VERIFIED' && !unsignedAlphaAllowed) {
+    errors.push('integrityVerification.postgresAuthenticode must be VERIFIED, or explicitly NOT_SIGNED_INTERNAL_ALPHA for an unsigned closed-Alpha build.');
   }
 
   for (const name of REQUIRED_ARCHIVES) {
