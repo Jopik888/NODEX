@@ -10,7 +10,7 @@ Runtime binaries are downloaded during the dedicated Windows build workflow. Nev
 | PostgreSQL | 17.11 (EDB revision 17.11-5) | `postgresql-17.11-5-windows-x64-binaries.zip` | Verify EDB's official `.sha256` sidecar and pinned archive SHA-256 |
 | Kubo | 0.43.1 | Official `kubo_v0.43.1_windows-amd64.zip` | Verify official `.sha512` sidecar before extraction |
 
-The staging script is `desktop/scripts/prepare-runtime.ps1`. It downloads the exact pinned artifacts, verifies them, extracts the complete PostgreSQL `bin/`, `lib/`, and `share/` layout, preserves upstream license files, computes executable hashes, validates exact runtime versions, and writes `RUNTIME-MANIFEST.json`.
+The staging script is `desktop/scripts/prepare-runtime.ps1`. It downloads the exact pinned artifacts, verifies them, extracts the complete PostgreSQL `bin/`, `lib/`, and `share/` layout, preserves upstream license files, computes executable hashes, validates exact runtime versions, and writes `RUNTIME-MANIFEST.json`. Node.js release ZIP SHA-256 is pinned to `e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f`; the staged `node.exe` SHA-256 is pinned to `86fc4785327db5f5c7558dc6156c543b433c313e813a222e088086222ab4afa6`. Kubo Windows ZIP SHA-256 is pinned to the official GitHub release asset digest `c25871516dec4d97ce1d160a26c1e3fdad294cb0eea065c0c0343bcfca86c524`; the official `.sha512` sidecar's SHA-256 is pinned to `99ded6a03faa39a92417f15781da332b8ed014840e089cca354cea347ce40717`.
 
 ## PostgreSQL archive identity and Authenticode
 
