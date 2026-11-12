@@ -11,7 +11,7 @@ const checks = [
   ['PostgreSQL initdb.exe', path.join(__dirname, 'assets', 'postgres', 'bin', 'initdb.exe')],
   ['PostgreSQL pg_ctl.exe', path.join(__dirname, 'assets', 'postgres', 'bin', 'pg_ctl.exe')],
   ['PostgreSQL createdb.exe', path.join(__dirname, 'assets', 'postgres', 'bin', 'createdb.exe')],
-  ['PostgreSQL share/server', path.join(__dirname, 'assets', 'postgres', 'share', 'server')],
+  ['PostgreSQL extension support files', path.join(__dirname, 'assets', 'postgres', 'share', 'extension')],
   ['Kubo ipfs.exe', path.join(__dirname, 'assets', 'ipfs', 'ipfs.exe')],
   ['Backend production dependencies', path.join(root, 'secure-disk-backend', 'node_modules', 'argon2')],
   ['Backend package-lock.json', path.join(root, 'secure-disk-backend', 'package-lock.json')],
