@@ -79,3 +79,16 @@ test('Kubo shutdown prefers the ipfs shutdown CLI with its private repository pa
   assert.deepEqual(invocation.args, ['shutdown']);
   assert.equal(invocation.env.IPFS_PATH, path.win32.join(root, 'ipfs-repo'));
 });
+
+test('run() kills a timed-out child process and rejects within its deadline', async () => {
+  const manager = new DesktopServiceManager({
+    app: {},
+    getResourcePath: () => '',
+    userDataPath: path.win32.join('C:\\', 'NODEX'),
+  });
+
+  await assert.rejects(
+    manager.run(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { timeoutMs: 50 }),
+    /timed out after 50 ms/,
+  );
+});
