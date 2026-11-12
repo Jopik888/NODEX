@@ -1,13 +1,9 @@
 name: NODEX Alpha 1 Windows build
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/alpha1-build-preparation
-    paths:
-      - '.github/workflows/alpha1-windows-build.yml'
-      - 'desktop/**'
-      - 'secure-disk-backend/package-lock.json'
+      - main
   workflow_dispatch:
 
 concurrency:
