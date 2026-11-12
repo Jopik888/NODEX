@@ -23,7 +23,7 @@ test('shutdown order is backend, graceful Kubo, then fast PostgreSQL stop', asyn
     ['ipfs', { kuboShutdown: true }],
     ['C:\\NODEX\\postgres\\bin\\pg_ctl.exe', [
       '-D', 'C:\\Users\\tester\\AppData\\Roaming\\NODEX\\postgres-data',
-      '-m', 'fast', '-w', 'stop',
+      '-m', 'fast', '-t', '10', '-w', 'stop',
     ]],
   ]);
   assert.equal(manager.startedPostgres, false);
@@ -59,13 +59,15 @@ test('backend shutdown uses IPC before forceful process termination', async () =
   assert.equal(manager.children.has('backend'), false);
 });
 
+
 test('Kubo shutdown prefers the ipfs shutdown CLI with its private repository path', async () => {
+  const root = path.win32.join('C:\\', 'NODEX');
   const manager = new DesktopServiceManager({
     app: {},
     getResourcePath: () => '',
-    userDataPath: 'C:\\\\NODEX',
+    userDataPath: root,
   });
-  manager.paths = () => ({ ipfs: 'C:\\\\NODEX\\\\ipfs.exe' });
+  manager.paths = () => ({ ipfs: path.win32.join(root, 'ipfs.exe') });
   let invocation;
   manager.run = async (executable, args, options) => {
     invocation = { executable, args, env: options.env };
@@ -73,7 +75,7 @@ test('Kubo shutdown prefers the ipfs shutdown CLI with its private repository pa
   };
 
   assert.equal(await manager.requestKuboShutdown(), true);
-  assert.equal(invocation.executable, 'C:\\\\NODEX\\\\ipfs.exe');
+  assert.equal(invocation.executable, path.win32.join(root, 'ipfs.exe'));
   assert.deepEqual(invocation.args, ['shutdown']);
-  assert.equal(invocation.env.IPFS_PATH, path.join('C:\\\\NODEX', 'ipfs-repo'));
+  assert.equal(invocation.env.IPFS_PATH, path.win32.join(root, 'ipfs-repo'));
 });
