@@ -53,6 +53,8 @@ try {
   if (!$Gpgv) { $Gpgv = Get-Command gpgv -ErrorAction SilentlyContinue }
   if (!$Gpgv) {
     choco install gnupg -y --no-progress
+    $GpgBin = 'C:\Program Files (x86)\GnuPG\bin'
+    if (Test-Path -LiteralPath $GpgBin) { $env:Path = "$GpgBin;$env:Path" }
     $Gpgv = Get-Command gpgv.exe -ErrorAction Stop
   }
   & $Gpgv.Source --keyring $NodeKeyring $NodeSig $NodeSums
