@@ -48,7 +48,17 @@
           "**/*",
           "!**/.env",
           "!**/.env.*",
-          "!**/coverage/**"
+          "!**/coverage/**",
+          "!**/*.map",
+          "!**/*.tsbuildinfo",
+          "!**/.git/**",
+          "!**/tests/**",
+          "!**/__tests__/**",
+          "!**/*.test.js",
+          "!**/*.test.cjs",
+          "!**/README*",
+          "!**/CHANGELOG*",
+          "!**/CONTRIBUTING*"
         ]
       },
       {
@@ -81,10 +91,12 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "compression": "maximum"
     },
     "portable": {
       "artifactName": "NODEX-Alpha-Portable-${version}-${arch}.${ext}"
-    }
+    },
+    "compression": "maximum"
   }
 }
