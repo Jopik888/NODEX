@@ -363,7 +363,7 @@ class DesktopServiceManager {
     if (this.startedPostgres) {
       const p = this.paths();
       await this.run(path.join(p.postgresBin, 'pg_ctl.exe'), [
-        '-D', path.join(this.userDataPath, 'postgres-data'), '-m', 'fast', '-w', 'stop',
+        '-D', path.join(this.userDataPath, 'postgres-data'), '-m', 'fast', '-t', '10', '-w', 'stop',
       ]).catch((error) => console.error('[NODEX] PostgreSQL stop:', error.message));
       this.startedPostgres = false;
     }
