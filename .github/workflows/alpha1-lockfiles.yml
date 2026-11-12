@@ -80,3 +80,7 @@ jobs:
           node --check preflight.cjs
           node --check runtime-integrity.cjs
           node --test runtime-integrity.test.cjs
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/prepare-runtime.ps1', [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Error $_.Message }; exit 1 }
