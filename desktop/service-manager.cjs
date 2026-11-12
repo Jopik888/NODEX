@@ -144,18 +144,18 @@ class DesktopServiceManager {
     });
   }
 
-  spawnService(name, executable, args, env = {}, { ipc = false } = {}) {
+  spawnService(name, executable, args, env = {}, { ipc = false, cwd = path.dirname(executable) } = {}) {
     const child = ipc
       ? fork(args[0], args.slice(1), {
         execPath: executable,
         execArgv: [],
-        cwd: path.dirname(args[0]),
+        cwd,
         env: { ...process.env, ...env },
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
       })
       : spawn(executable, args, {
-        cwd: path.dirname(executable),
+        cwd,
         env: { ...process.env, ...env },
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -275,7 +275,7 @@ class DesktopServiceManager {
   async startBackend() {
     const p = this.paths();
     await this.assertPortAvailable(3001, 'NODEX backend');
-    const child = this.spawnService('backend', p.node, [path.join(p.backend, 'src', 'server.js')], this.backendEnv(), { ipc: true });
+    const child = this.spawnService('backend', p.node, [path.join(p.backend, 'src', 'server.js')], this.backendEnv(), { ipc: true, cwd: p.backend });
     await this.waitFor(async () => {
       if (child.exitCode !== null) throw new Error('Backend process stopped');
       return await new Promise((resolve) => {
