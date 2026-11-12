@@ -132,15 +132,27 @@ class DesktopServiceManager {
   }
 
   async run(executable, args, options = {}) {
+    const { timeoutMs = 120000, ...spawnOptions } = options;
     return new Promise((resolve, reject) => {
-      const child = spawn(executable, args, { windowsHide: true, ...options });
-      let stdout = '', stderr = '';
+      const child = spawn(executable, args, { windowsHide: true, ...spawnOptions });
+      let stdout = '', stderr = '', settled = false;
+      const finish = (error, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(result);
+      };
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch (_) {}
+        finish(new Error(`${path.basename(executable)} timed out after ${timeoutMs} ms`));
+      }, timeoutMs);
       child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); });
       child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
-      child.once('error', reject);
+      child.once('error', (error) => finish(error));
       child.once('close', (code) => code === 0
-        ? resolve({ stdout, stderr })
-        : reject(new Error(`${path.basename(executable)} завершился с кодом ${code}: ${(stderr || stdout).slice(-1200)}`)));
+        ? finish(null, { stdout, stderr })
+        : finish(new Error(`${path.basename(executable)} завершился с кодом ${code}: ${(stderr || stdout).slice(-1200)}`)));
     });
   }
 
@@ -302,7 +314,7 @@ class DesktopServiceManager {
     // Prefer Kubo's supported CLI shutdown command. Fall back to the loopback
     // API endpoint for versions/builds where the CLI command is unavailable.
     try {
-      await this.run(p.ipfs, ['shutdown'], { env });
+      await this.run(p.ipfs, ['shutdown'], { env, timeoutMs: 8000 });
       return true;
     } catch (error) {
       console.warn('[NODEX] Kubo CLI shutdown failed; trying loopback API:', error.message);
@@ -364,7 +376,7 @@ class DesktopServiceManager {
       const p = this.paths();
       await this.run(path.join(p.postgresBin, 'pg_ctl.exe'), [
         '-D', path.join(this.userDataPath, 'postgres-data'), '-m', 'fast', '-t', '10', '-w', 'stop',
-      ]).catch((error) => console.error('[NODEX] PostgreSQL stop:', error.message));
+      ], { timeoutMs: 15000 }).catch((error) => console.error('[NODEX] PostgreSQL stop:', error.message));
       this.startedPostgres = false;
     }
   }
