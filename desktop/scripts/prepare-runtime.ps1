@@ -174,7 +174,15 @@ try {
   # Preserve the upstream PostgreSQL/EDB license and notice files even though
   # non-runtime documentation and development headers are not shipped.
   $PostgresLicenseFiles = @(Get-ChildItem -LiteralPath $PostgresRoot -File |
-    Where-Object { $_.Name -match '^(LICENSE|COPYING|COPYRIGHT|NOTICE)([._-].*)?
+    Where-Object { $_.Name -match '^(LICENSE|COPYING|COPYRIGHT|NOTICE)' })
+  if ($PostgresLicenseFiles.Count -eq 0) {
+    throw 'EDB PostgreSQL archive contains no recognizable root license/notice file.'
+  }
+  $PostgresLicenseRelativePaths = @()
+  foreach ($licenseFile in $PostgresLicenseFiles) {
+    Copy-Item -LiteralPath $licenseFile.FullName -Destination (Join-Path $Assets 'postgres') -Force
+    $PostgresLicenseRelativePaths += ('postgres/' + $licenseFile.Name)
+  }
   Get-ChildItem -LiteralPath (Join-Path $Assets 'postgres') -Filter '*.pdb' -Recurse -File |
     Remove-Item -Force
   # PostgreSQL's packaged manuals are not used by initdb/server/pg_ctl.
