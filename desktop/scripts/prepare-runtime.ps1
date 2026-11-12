@@ -17,11 +17,19 @@ $KuboBase = "https://dist.ipfs.tech/kubo/v$KuboVersion"
 $KuboZipName = "kubo_v$($KuboVersion)_windows-amd64.zip"
 
 function Get-Download([string]$Url, [string]$Destination) {
+  $watch = [System.Diagnostics.Stopwatch]::StartNew()
   Write-Host "Downloading $Url"
-  Invoke-WebRequest -Uri $Url -OutFile $Destination -MaximumRedirection 10
+  $curl = Get-Command curl.exe -ErrorAction Stop
+  & $curl.Source --fail --silent --show-error --location --retry 3 --retry-all-errors --connect-timeout 30 --max-time 1800 --output $Destination $Url
+  if ($LASTEXITCODE -ne 0) {
+    throw "Download failed with curl exit code $LASTEXITCODE: $Url"
+  }
   if (!(Test-Path -LiteralPath $Destination) -or (Get-Item -LiteralPath $Destination).Length -lt 1) {
     throw "Download is missing or empty: $Destination"
   }
+  $watch.Stop()
+  $file = Get-Item -LiteralPath $Destination
+  Write-Host ("Downloaded {0:N0} bytes in {1:N1}s: {2}" -f $file.Length, $watch.Elapsed.TotalSeconds, $Destination)
 }
 
 function Get-Sha256([string]$File) {
@@ -30,7 +38,16 @@ function Get-Sha256([string]$File) {
 
 function Expand-CheckedZip([string]$Archive, [string]$Destination) {
   New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-  Expand-Archive -LiteralPath $Archive -DestinationPath $Destination -Force
+  $watch = [System.Diagnostics.Stopwatch]::StartNew()
+  $archiveInfo = Get-Item -LiteralPath $Archive
+  Write-Host ("Extracting {0:N0} bytes: {1}" -f $archiveInfo.Length, $Archive)
+  $tar = Get-Command tar.exe -ErrorAction Stop
+  & $tar.Source -xf $Archive -C $Destination
+  if ($LASTEXITCODE -ne 0) {
+    throw "Windows tar failed to extract archive (exit code $LASTEXITCODE): $Archive"
+  }
+  $watch.Stop()
+  Write-Host ("Extraction completed in {0:N1}s: {1}" -f $watch.Elapsed.TotalSeconds, $Destination)
 }
 
 New-Item -ItemType Directory -Force -Path $Temp | Out-Null
@@ -104,6 +121,7 @@ try {
   $NodeExpected = ($NodeSumLine -split '\s+')[0].ToLowerInvariant()
   if ($NodeExpected -notmatch '^[a-f0-9]{64}$') { throw 'The Node.js ZIP checksum entry is malformed.' }
   $NodeActual = Get-Sha256 $NodeZip
+  Write-Host "Node.js release signature and ZIP SHA-256 verified: $NodeActual"
   if ($NodeActual -ne $NodeExpected) { throw "Node.js ZIP SHA-256 mismatch: expected $NodeExpected, got $NodeActual" }
 
   $NodeExtract = Join-Path $Temp 'node-extract'
@@ -127,6 +145,7 @@ try {
   }
   Get-Download $PostgresUrl $PostgresZip
   $PostgresActual = Get-Sha256 $PostgresZip
+  Write-Host "EDB PostgreSQL 17.11-5 ZIP SHA-256 verified: $PostgresActual"
   if ($PostgresActual -ne $PostgresSha256Expected) {
     throw "EDB PostgreSQL archive SHA-256 mismatch: expected $PostgresSha256Expected, got $PostgresActual"
   }
@@ -168,6 +187,7 @@ try {
   if ($KuboSidecarText -notmatch '(?<hash>[a-fA-F0-9]{128})') { throw 'Official Kubo SHA-512 sidecar is malformed.' }
   $KuboExpectedSha512 = $Matches.hash.ToLowerInvariant()
   $KuboActualSha512 = (Get-FileHash -LiteralPath $KuboZip -Algorithm SHA512).Hash.ToLowerInvariant()
+  Write-Host "Kubo 0.43.1 ZIP SHA-512 computed: $KuboActualSha512"
   if ($KuboActualSha512 -ne $KuboExpectedSha512) {
     throw "Kubo ZIP SHA-512 mismatch: expected $KuboExpectedSha512, got $KuboActualSha512"
   }
