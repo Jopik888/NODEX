@@ -8,14 +8,14 @@
 - PostgreSQL first-run cluster initialization under `%APPDATA%/NODEX`, private loopback listener, database creation and existing SQL migrations.
 - Kubo repo initialization; API and Gateway are forced to `127.0.0.1`. Kubo is never exposed to LAN.
 - Backend health check and ordered shutdown: backend receives SIGTERM, Kubo is asked to shut down through its loopback API with process fallback, and the NODEX PostgreSQL cluster is stopped with `pg_ctl -m fast`. User data is retained on uninstall.
-- A Windows runtime staging script downloads exact pinned Node.js 24.22.3, PostgreSQL 17.11-4 portable ZIP and Kubo 0.43.1. It verifies Node.js release signature/checksum, EDB's vendor-published PostgreSQL archive SHA-256, Kubo's official SHA-512 sidecar, executable hashes and exact runtime versions; it preserves upstream license files and generates the runtime manifest.
+- A Windows runtime staging script downloads exact pinned Node.js 24.22.3, PostgreSQL 17.11-5 portable ZIP and Kubo 0.43.1. It verifies Node.js release signature/checksum, EDB's vendor-published PostgreSQL archive SHA-256, Kubo's official SHA-512 sidecar, executable hashes and exact runtime versions; it preserves upstream license files and generates the runtime manifest.
 - Runtime integrity validation is shared by build preflight and desktop startup. It rejects missing archives/hashes, altered executables, path traversal, version drift and invalid/untrusted PostgreSQL Authenticode signatures.
 - A dedicated Windows 2022 GitHub Actions workflow installs production backend dependencies and Electron build dependencies from lockfiles, stages and verifies runtime, runs preflight, builds NSIS installer and portable executable, then uploads both as a workflow artifact.
 - Electron 45.3.0 and electron-builder 26.18.0 are pinned. NSIS is configured not to remove NODEX app data on uninstall.
 
 ## Closed Alpha signing policy
 
-The user explicitly approved unsigned Alpha 1 packaging. The installer and portable EXE are unsigned. EDB's PostgreSQL 17.11-4 portable archive may also contain unsigned EXE/DLL files. The staging script inspects every PE file under PostgreSQL `bin/` and `lib/`; invalid or untrusted signatures stop the build. If files are merely unsigned, the manifest records `NOT_SIGNED_INTERNAL_ALPHA`, and build preflight requires the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in plus `releaseChannel=closed-alpha`.
+The user explicitly approved unsigned Alpha 1 packaging. The installer and portable EXE are unsigned. EDB's PostgreSQL 17.11-5 portable archive may also contain unsigned EXE/DLL files. The staging script inspects every PE file under PostgreSQL `bin/` and `lib/`; invalid or untrusted signatures stop the build. If files are merely unsigned, the manifest records `NOT_SIGNED_INTERNAL_ALPHA`, and build preflight requires the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in plus `releaseChannel=closed-alpha`.
 
 **Important:** Windows Smart App Control may block unsigned PostgreSQL binaries. This package is for closed Alpha testing only and is not public-release ready. Do not disable Windows security protections merely to make the installer run; report any block so we can select a properly signed PostgreSQL distribution or revise the packaging plan. Commercial Authenticode signing is deferred until public release as agreed.
 
