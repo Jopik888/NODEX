@@ -6,24 +6,29 @@ Runtime binaries are downloaded during the dedicated Windows build workflow. Nev
 
 | Component | Version | Source artifact | Verification |
 |---|---:|---|---|
-| Node.js | 24.22.3 | Official `node-v24.22.3-win-x64.zip` | Verify detached signature of `SHASUMS256.txt` using the official Node.js active releaser keyring, then check archive SHA-256 |
-| PostgreSQL | 17.11 | EDB `postgresql-17.11-4-windows-x64-binaries.zip` | Verify exact vendor-published SHA-256 before extraction |
+| Node.js | 24.22.3 | Official `node-v24.22.3-win-x64.zip` | Verify official clear-signed `SHASUMS256.txt.asc` with the pinned Node release keyring and approved signer fingerprint, then check archive SHA-256 |
+| PostgreSQL | 17.11 (EDB revision 17.11-5) | `postgresql-17.11-5-windows-x64-binaries.zip` | Verify EDB's official `.sha256` sidecar and pinned archive SHA-256 |
 | Kubo | 0.43.1 | Official `kubo_v0.43.1_windows-amd64.zip` | Verify official `.sha512` sidecar before extraction |
 
 The staging script is `desktop/scripts/prepare-runtime.ps1`. It downloads the exact pinned artifacts, verifies them, extracts the complete PostgreSQL `bin/`, `lib/`, and `share/` layout, preserves upstream license files, computes executable hashes, validates exact runtime versions, and writes `RUNTIME-MANIFEST.json`.
 
-## PostgreSQL signature status — closed Alpha limitation
+## PostgreSQL archive identity and Authenticode
 
-EDB's published SHA-256 for the exact 17.11-4 ZIP is `b9424ee7bc60b52450ff910a3630225df32e633f3cb29c1d126d9299d59aea28`. EDB has stated that expanded Authenticode signing coverage is in progress, but its public issue still documents unsigned PostgreSQL EXE/DLL files and does not yet confirm that the portable ZIP is fully signed. The staging script inspects every EXE/DLL under `bin/` and `lib/`; invalid or untrusted signatures fail the build.
+The selected archive is EDB PostgreSQL 17.11-5:
+- ZIP: `https://get.enterprisedb.com/postgresql/postgresql-17.11-5-windows-x64-binaries.zip`
+- Official checksum sidecar: `https://get.enterprisedb.com/postgresql/postgresql-17.11-5-windows-x64-binaries.zip.sha256`
+- Pinned SHA-256: `80379b2c04d51c30225532e0ae04509899141e9957ed096fe749d7fd9df8f82f`
 
-For the user's explicitly approved **closed Alpha 1**, unsigned PostgreSQL binaries are recorded as `NOT_SIGNED_INTERNAL_ALPHA`. Packaging requires both this manifest state and the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in. This is not acceptable for public distribution. Windows Smart App Control may block unsigned PostgreSQL binaries even though the downloaded archive and executable hashes match; the Alpha test machine may need Smart App Control compatibility verified before testing. Do not represent this as a signed or public-ready distribution.
+EDB confirmed this SHA-256 in its issue tracker and linked the official checksum sidecar. A public report for this archive identified `postgres.exe`, `initdb.exe`, and `pg_ctl.exe` as `NotSigned`; EDB has not yet confirmed that all portable EXE/DLL files are Authenticode-signed. The staging script therefore inspects every EXE/DLL under `bin/` and `lib/`; invalid or untrusted signatures fail the build.
+
+For the user's explicitly approved **closed Alpha 1**, unsigned PostgreSQL PE files are recorded as `NOT_SIGNED_INTERNAL_ALPHA`. Packaging requires both this manifest state and the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in. This is not acceptable for public distribution. Windows Smart App Control may block unsigned PostgreSQL binaries even though the downloaded archive and executable hashes match; do not disable Windows security protections to work around a block.
 
 ## Runtime manifest contract
 
 The generated manifest records:
 - exact version, source URL, archive filename and staged executable path for each component;
 - SHA-256 of each source archive and staged executable;
-- Node.js detached-signature verification;
+- Node.js detached/clear-signature verification and expected signing-key fingerprint;
 - EDB archive digest verification and actual Authenticode state;
 - Kubo official sidecar verification;
 - closed-Alpha/unsigned distribution status and included license files.
