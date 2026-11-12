@@ -202,7 +202,7 @@ class DesktopServiceManager {
       const pwFile = path.join(this.userDataPath, `pg-init-${crypto.randomUUID()}.tmp`);
       await fsp.writeFile(pwFile, this.secrets.dbPassword, { mode: 0o600 });
       try {
-        await this.run(initdb, ['-D', data, '-U', 'nodex', '-A', 'scram-sha-256', '--pwfile', pwFile, '--encoding=UTF8'], {
+        await this.run(initdb, ['-D', data, '-U', 'nodex', '-A', 'scram-sha-256', '--pwfile', pwFile, '--encoding=UTF8', '--locale=C'], {
           env: { ...process.env, PATH: `${p.postgresBin};${process.env.PATH}`, PGSHARE: p.postgresShare },
         });
       } finally { await fsp.rm(pwFile, { force: true }); }
@@ -296,6 +296,18 @@ class DesktopServiceManager {
   }
 
   async requestKuboShutdown() {
+    const p = this.paths();
+    const env = { ...process.env, IPFS_PATH: path.join(this.userDataPath, 'ipfs-repo') };
+
+    // Prefer Kubo's supported CLI shutdown command. Fall back to the loopback
+    // API endpoint for versions/builds where the CLI command is unavailable.
+    try {
+      await this.run(p.ipfs, ['shutdown'], { env });
+      return true;
+    } catch (error) {
+      console.warn('[NODEX] Kubo CLI shutdown failed; trying loopback API:', error.message);
+    }
+
     return new Promise((resolve) => {
       const req = http.request({
         hostname: '127.0.0.1',
