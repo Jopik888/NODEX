@@ -14,8 +14,8 @@
     },
     "postgres": {
       "version": "17.11",
-      "source": "https://sbp.enterprisedb.com/getfile.jsp?fileid=1260569",
-      "archiveFile": "postgresql-17.11-4-windows-x64-binaries.zip",
+      "source": "https://get.enterprisedb.com/postgresql/postgresql-17.11-5-windows-x64-binaries.zip",
+      "archiveFile": "postgresql-17.11-5-windows-x64-binaries.zip",
       "file": "postgres/bin/postgres.exe",
       "sha256": ""
     },
@@ -29,7 +29,7 @@
   },
   "archiveSha256": {
     "nodeWindowsZip": "e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f",
-    "postgresBinariesZip": "b9424ee7bc60b52450ff910a3630225df32e633f3cb29c1d126d9299d59aea28",
+    "postgresBinariesZip": "80379b2c04d51c30225532e0ae04509899141e9957ed096fe749d7fd9df8f82f",
     "kuboWindowsZip": ""
   },
   "integrityVerification": {
