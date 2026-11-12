@@ -392,7 +392,7 @@ finally {
       postgresAuthenticode = $PostgresSignatureState
       kuboArchiveSha256 = 'VERIFIED'
     }
-    licenseFiles = @('runtime/LICENSE', 'ipfs/LICENSE', 'ipfs/LICENSE-APACHE', 'ipfs/LICENSE-MIT', 'postgres/')
+    licenseFiles = (@('runtime/LICENSE', 'ipfs/LICENSE', 'ipfs/LICENSE-APACHE', 'ipfs/LICENSE-MIT') + $PostgresLicenseRelativePaths)
   }
   $ManifestPath = Join-Path $Assets 'RUNTIME-MANIFEST.json'
   [IO.File]::WriteAllText($ManifestPath, ($Manifest | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
