@@ -26,7 +26,7 @@ function Get-Download([string]$Url, [string]$Destination) {
   $curl = Get-Command curl.exe -ErrorAction Stop
   & $curl.Source --fail --silent --show-error --location --retry 3 --retry-all-errors --connect-timeout 30 --max-time 1800 --output $Destination $Url
   if ($LASTEXITCODE -ne 0) {
-    throw "Download failed with curl exit code $LASTEXITCODE: $Url"
+    throw "Download failed with curl exit code ${LASTEXITCODE}: $Url"
   }
   if (!(Test-Path -LiteralPath $Destination) -or (Get-Item -LiteralPath $Destination).Length -lt 1) {
     throw "Download is missing or empty: $Destination"
