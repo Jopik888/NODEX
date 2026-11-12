@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn, spawnSync, fork } = require('node:child_process');
 const { validateRuntimeManifest } = require('./runtime-integrity.cjs');
 const http = require('node:http');
 const net = require('node:net');
@@ -144,13 +144,22 @@ class DesktopServiceManager {
     });
   }
 
-  spawnService(name, executable, args, env = {}) {
-    const child = spawn(executable, args, {
-      cwd: path.dirname(executable),
-      env: { ...process.env, ...env },
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  spawnService(name, executable, args, env = {}, { ipc = false } = {}) {
+    const child = ipc
+      ? fork(args[0], args.slice(1), {
+        execPath: executable,
+        execArgv: [],
+        cwd: path.dirname(args[0]),
+        env: { ...process.env, ...env },
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      })
+      : spawn(executable, args, {
+        cwd: path.dirname(executable),
+        env: { ...process.env, ...env },
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
     child.stdout.on('data', (chunk) => console.log(`[${name}] ${chunk.toString().trim()}`));
     child.stderr.on('data', (chunk) => console.error(`[${name}] ${chunk.toString().trim()}`));
     child.once('exit', (code) => {
@@ -266,7 +275,7 @@ class DesktopServiceManager {
   async startBackend() {
     const p = this.paths();
     await this.assertPortAvailable(3001, 'NODEX backend');
-    const child = this.spawnService('backend', p.node, [path.join(p.backend, 'src', 'server.js')], this.backendEnv());
+    const child = this.spawnService('backend', p.node, [path.join(p.backend, 'src', 'server.js')], this.backendEnv(), { ipc: true });
     await this.waitFor(async () => {
       if (child.exitCode !== null) throw new Error('Backend process stopped');
       return await new Promise((resolve) => {
@@ -312,8 +321,12 @@ class DesktopServiceManager {
       return;
     }
 
-    if (kuboShutdown) await this.requestKuboShutdown();
-    else {
+    if (kuboShutdown) {
+      await this.requestKuboShutdown();
+    } else if (name === 'backend' && child.connected && typeof child.send === 'function') {
+      try { child.send({ type: 'nodex:shutdown' }); }
+      catch (_) { try { child.kill(); } catch (_) {} }
+    } else {
       try { child.kill('SIGTERM'); } catch (_) {}
     }
 
