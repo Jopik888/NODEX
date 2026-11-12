@@ -65,7 +65,6 @@ for (const [executable, args, expected] of versionChecks) {
   }
 }
 
-
 const postgresBin = path.join(__dirname, 'assets', 'postgres', 'bin');
 const postgresLib = path.join(__dirname, 'assets', 'postgres', 'lib');
 const signatureScript = [
@@ -73,9 +72,9 @@ const signatureScript = [
   "$roots = @($env:NODEX_PG_BIN, $env:NODEX_PG_LIB)",
   "$files = @(Get-ChildItem -LiteralPath $roots -Recurse -File | Where-Object { $_.Extension -in '.exe', '.dll' })",
   "if ($files.Count -eq 0) { Write-Error 'No PostgreSQL executable or DLL files were found.'; exit 1 }",
-  "$invalid = @($files | ForEach-Object { $signature = Get-AuthenticodeSignature -LiteralPath $_.FullName; if ($signature.Status -ne 'Valid') { [PSCustomObject]@{ Path = $_.FullName; Status = [string]$signature.Status; Signer = $signature.SignerCertificate.Subject } } })",
-  "if ($invalid.Count -gt 0) { $invalid | ConvertTo-Json -Compress | Write-Output; exit 1 }",
-  "Write-Output ('Verified Authenticode signatures for ' + $files.Count + ' PostgreSQL EXE/DLL files.')",
+  "$statuses = @($files | ForEach-Object { [string](Get-AuthenticodeSignature -LiteralPath $_.FullName).Status })",
+  "if (@($statuses | Where-Object { $_ -notin @('Valid', 'NotSigned') }).Count -gt 0) { Write-Error 'PostgreSQL binaries contain an invalid or untrusted Authenticode signature.'; exit 1 }",
+  "if (@($statuses | Where-Object { $_ -eq 'NotSigned' }).Count -gt 0) { Write-Output 'NOT_SIGNED_INTERNAL_ALPHA' } else { Write-Output 'VERIFIED' }",
 ].join('; ');
 const signatures = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', signatureScript], {
   encoding: 'utf8',
@@ -84,10 +83,22 @@ const signatures = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive',
   env: { ...process.env, NODEX_PG_BIN: postgresBin, NODEX_PG_LIB: postgresLib },
 });
 if (signatures.error || signatures.status !== 0) {
-  console.error('PostgreSQL Authenticode verification failed. Every EXE/DLL in bin/ and lib/ must have a valid trusted signature.');
+  console.error('PostgreSQL Authenticode inspection failed.');
   console.error((signatures.stdout || signatures.stderr || signatures.error?.message || '').trim());
   process.exit(1);
 }
-console.log((signatures.stdout || '').trim());
+const actualSignatureState = (signatures.stdout || '').trim().split(/\r?\n/).pop();
+if (actualSignatureState !== manifest.integrityVerification.postgresAuthenticode) {
+  console.error(`PostgreSQL signature state mismatch: manifest=${manifest.integrityVerification.postgresAuthenticode}, actual=${actualSignatureState}`);
+  process.exit(1);
+}
+if (actualSignatureState === 'NOT_SIGNED_INTERNAL_ALPHA'
+  && (manifest.releaseChannel !== 'closed-alpha'
+    || manifest.installerSigning !== 'unsigned'
+    || process.env.NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES !== '1')) {
+  console.error('Unsigned PostgreSQL files are permitted only for an explicitly opted-in, unsigned closed Alpha build.');
+  process.exit(1);
+}
+console.log(`PostgreSQL Authenticode state: ${actualSignatureState}`);
 
 console.log('NODEX Alpha 1 Windows x64 packaging preflight: PASS');
