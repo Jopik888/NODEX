@@ -10,6 +10,10 @@ on:
       - 'secure-disk-backend/package-lock.json'
   workflow_dispatch:
 
+concurrency:
+  group: nodex-alpha1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
