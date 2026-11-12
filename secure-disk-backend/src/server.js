@@ -3,6 +3,7 @@ import { config } from './config/index.js';
 import { pool } from './db/pool.js';
 
 let server;
+let shuttingDown = false;
 
 async function start() {
   await pool.query('SELECT 1');
@@ -19,6 +20,8 @@ async function start() {
 }
 
 async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log(JSON.stringify({ level: 'info', event: 'server_shutdown', signal }));
   if (server) {
     await new Promise((resolve) => server.close(resolve));
@@ -29,6 +32,9 @@ async function shutdown(signal) {
 
 process.on('SIGINT', () => void shutdown('SIGINT'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('message', (message) => {
+  if (message && message.type === 'nodex:shutdown') void shutdown('IPC');
+});
 
 start().catch(async (error) => {
   console.error(JSON.stringify({ level: 'fatal', event: 'server_start_failed', message: error.message }));
