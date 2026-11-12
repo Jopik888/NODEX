@@ -72,42 +72,39 @@ try {
   Get-Download "$NodeBase/SHASUMS256.txt.asc" $NodeSig
   Get-Download 'https://raw.githubusercontent.com/nodejs/release-keys/481637f813e912c4aa3622d7964ab426c97b8e8d/gpg-only-active-keys/pubring.kbx' $NodeKeyring
 
-  # Prefer the native Windows GnuPG binary. Git for Windows ships an MSYS gpgv
-  # whose path translation can corrupt Windows absolute keyring paths.
+  # Use the gpgv shipped with Git for Windows. Avoid a Chocolatey bootstrap:
+  # its package installer can hang on hosted Windows runners. Run with a temp
+  # working directory and relative paths to avoid MSYS argument path rewriting.
   $GpgvCandidates = @(
-    'C:\Program Files (x86)\GnuPG\bin\gpgv.exe',
-    'C:\Program Files\GnuPG\bin\gpgv.exe'
+    (Join-Path $env:ProgramFiles 'Git\usr\bin\gpgv.exe'),
+    (Join-Path $env:ProgramFiles 'Git\mingw64\bin\gpgv.exe')
   )
   $GpgvPath = $GpgvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
   if (!$GpgvPath) {
-    choco install gnupg --version=2.5.21 -y --no-progress
-    $GpgvPath = $GpgvCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    $GpgvCommand = Get-Command gpgv.exe -ErrorAction SilentlyContinue
+    if ($GpgvCommand) { $GpgvPath = $GpgvCommand.Source }
   }
-  if (!$GpgvPath) { throw 'Native Windows GnuPG gpgv.exe could not be located after installation.' }
+  if (!$GpgvPath) { throw 'Git for Windows gpgv.exe could not be located. Refusing to skip Node.js release signature verification.' }
 
-  # Node.js documents a clear-signed .asc file on stdin; use byte-preserving
-  # stdin with the native Windows GnuPG executable and an explicit keyring.
   $GpgStartInfo = [System.Diagnostics.ProcessStartInfo]::new()
   $GpgStartInfo.FileName = $GpgvPath
+  $GpgStartInfo.WorkingDirectory = $Temp
   $GpgStartInfo.UseShellExecute = $false
   $GpgStartInfo.CreateNoWindow = $true
-  $GpgStartInfo.RedirectStandardInput = $true
   $GpgStartInfo.RedirectStandardError = $true
   $GpgStartInfo.RedirectStandardOutput = $true
   $GpgStartInfo.ArgumentList.Add('--status-fd=1')
-  $GpgStartInfo.ArgumentList.Add("--keyring=$NodeKeyring")
-  $GpgStartInfo.ArgumentList.Add("--output=$NodeVerifiedSums")
+  $GpgStartInfo.ArgumentList.Add('--homedir=.')
+  $GpgStartInfo.ArgumentList.Add('--keyring=./nodejs-active-release-keys.kbx')
+  $GpgStartInfo.ArgumentList.Add('--output=./SHASUMS256.verified.txt')
+  $GpgStartInfo.ArgumentList.Add('./SHASUMS256.txt.asc')
 
   $GpgProcess = [System.Diagnostics.Process]::new()
   $GpgProcess.StartInfo = $GpgStartInfo
-  if (!$GpgProcess.Start()) { throw 'Unable to start native Windows GnuPG verifier.' }
+  if (!$GpgProcess.Start()) { throw 'Unable to start Git for Windows GnuPG verifier.' }
   try {
-    # Drain both output streams asynchronously before writing stdin to avoid pipe deadlocks.
     $GpgStdoutTask = $GpgProcess.StandardOutput.ReadToEndAsync()
     $GpgStderrTask = $GpgProcess.StandardError.ReadToEndAsync()
-    $SignatureBytes = [IO.File]::ReadAllBytes($NodeSig)
-    $GpgProcess.StandardInput.BaseStream.Write($SignatureBytes, 0, $SignatureBytes.Length)
-    $GpgProcess.StandardInput.Close()
     $GpgProcess.WaitForExit()
     $GpgStdout = $GpgStdoutTask.GetAwaiter().GetResult()
     $GpgStderr = $GpgStderrTask.GetAwaiter().GetResult()
