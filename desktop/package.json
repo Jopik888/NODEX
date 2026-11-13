@@ -6,7 +6,7 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist:win": "node preflight.cjs && electron-builder --win nsis portable",
+    "dist:win": "node preflight.cjs && electron-builder --win nsis",
     "dist:win:nsis": "node preflight.cjs && electron-builder --win nsis",
     "dist:win:portable": "node preflight.cjs && electron-builder --win portable",
     "prepare:runtime": "pwsh -NoProfile -File ./scripts/prepare-runtime.ps1"
