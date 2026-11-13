@@ -8,6 +8,7 @@ import csrfRoutes from './routes/csrf.routes.js';
 import devicesRoutes from './routes/devices.routes.js';
 import pairingRoutes from './routes/pairing.routes.js';
 import vaultRoutes from './routes/vault.routes.js';
+import ipfsProxyRoutes from './routes/ipfs-proxy.routes.js';
 import { apiLimiter } from './middleware/rate-limit.js';
 
 export const app = express();
@@ -48,6 +49,7 @@ api.use('/devices/pairing', pairingRoutes);
 api.use('/devices', devicesRoutes);
 api.use('/vault', vaultRoutes);
 app.use('/api/v1', api);
+app.use('/ipfs/api/v0', ipfsProxyRoutes);
 
 app.use((_req, res) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } });
@@ -58,6 +60,12 @@ app.use((error, _req, res, _next) => {
 
   if (error?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Request body contains invalid JSON.' } });
+  }
+  if (error?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: { code: 'IPFS_FILE_TOO_LARGE', message: 'Encrypted upload exceeds the 100 MiB limit.' } });
+  }
+  if (error?.name === 'MulterError') {
+    return res.status(400).json({ error: { code: 'IPFS_UPLOAD_INVALID', message: 'Upload must contain exactly one file and no additional fields.' } });
   }
   if (error?.type === 'entity.too.large') {
     return res.status(413).json({ error: { code: 'REQUEST_TOO_LARGE', message: 'Request body is too large.' } });

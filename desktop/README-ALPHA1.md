@@ -1,37 +1,59 @@
-# NODEX Windows Alpha 1 — техническая основа
+# NODEX Windows Alpha 1 — сборка и runtime
 
-## Что добавлено
+## Реализовано в feature/alpha1-build-preparation
 
 - Electron main/preload shell with `contextIsolation`, `sandbox`, `nodeIntegration: false`.
-- Local frontend HTTP origin on `127.0.0.1:4173` (secure-context localhost; fixed origin for backend CORS).
-- Bootstrap/preflight for bundled Node.js 24.22.2, PostgreSQL 17.11 binaries, Kubo 0.43.1 and backend dependencies; packaged frontend is resolved from the `resources/frontend` payload.
+- Local frontend HTTP origin on `127.0.0.1:4173`; backend remains loopback-only on `127.0.0.1:3001`.
 - Windows DPAPI-backed encrypted storage for generated PostgreSQL password and sync-room encryption key via Electron `safeStorage`.
-- First-run PostgreSQL data initialization in `%APPDATA%/NODEX`, loopback-only PostgreSQL listener, database creation and existing SQL migrations.
-- Kubo repo initialization and loopback-only API/Gateway configuration; Kubo daemon lifecycle.
-- Backend start/health check on `127.0.0.1:3001` and service shutdown on app exit. A single-instance lock prevents two NODEX desktop processes from opening the same PostgreSQL/Kubo repositories.
-- Electron 45.3.0 + electron-builder 26.18.0 (pinned), NSIS and portable packaging targets. Build preflight fails closed until all pinned runtime assets and lock files are staged. Uninstall is configured not to delete app data.
+- PostgreSQL first-run cluster initialization under `%APPDATA%/NODEX`, private loopback listener, database creation and existing SQL migrations.
+- Kubo repo initialization; API and Gateway are forced to `127.0.0.1`. Kubo is never exposed to LAN.
+- Backend health check and ordered shutdown: backend receives SIGTERM, Kubo is asked to shut down through its loopback API with process fallback, and the NODEX PostgreSQL cluster is stopped with `pg_ctl -m fast`. User data is retained on uninstall.
+- A Windows runtime staging script downloads exact pinned Node.js 24.22.3, PostgreSQL 17.11-5 portable ZIP and Kubo 0.43.1. It verifies Node.js release signature and pinned archive SHA-256, EDB's vendor-published PostgreSQL archive SHA-256, Kubo's official SHA-512 sidecar, executable hashes and exact runtime versions; it preserves upstream license files and generates the runtime manifest.
+- Runtime integrity validation is shared by build preflight and desktop startup. It rejects missing archives/hashes, altered executables, path traversal, version drift and invalid/untrusted PostgreSQL Authenticode signatures.
+- A dedicated Windows 2022 GitHub Actions workflow installs production backend dependencies and Electron build dependencies from lockfiles, stages and verifies runtime, runs preflight, builds NSIS installer and portable executable, then uploads both as a workflow artifact.
+- Electron 45.3.0 and electron-builder 26.18.0 are pinned. NSIS is configured not to remove NODEX app data on uninstall.
 
-## Важные ограничения этой стадии
+## Closed Alpha signing policy
 
-1. В архиве проекта нет runtime-бинарников Node.js, PostgreSQL и Kubo, а также package-lock файлов, поэтому готовый EXE пока не собирается. Их нужно добавить в `assets` по `assets/README-RUNTIME.md` после проверки версий, лицензий и SHA-256.
-2. Backend `package.json` не содержит lock-файла. До release необходимо создать и зафиксировать `package-lock.json`, выполнить `npm ci --omit=dev` и проверить нативный `argon2` именно на поставляемом Node.js 24.22.2 runtime.
-3. Текущий frontend обращается к Kubo API напрямую по `http://localhost:5001/api/v0` и вызывает `/add`, `/cat`, `/pin/add`, `/pin/rm`, `/repo/gc`. Это приемлемо только для локального Windows-клиента при Kubo bind на loopback. Android LAN proxy — отдельный этап; не публиковать Kubo API в LAN.
-4. Frontend содержит ESM/CDN зависимости (Trystero, JSZip, qrcode-generator, html5-qrcode). Для работы без интернета их нужно локализовать и проверить лицензии/версии. На Alpha 1 интернет нужен для этих внешних модулей.
-5. SMTP в Alpha 1 не настроен по умолчанию. Backend запускается в development-mode с `DEV_RETURN_VERIFICATION_TOKEN=true` для тестовой регистрации. Не использовать эту конфигурацию как публичный production-сервер.
-6. `COOKIE_SECURE=false` допустим только для loopback Alpha 1. LAN-доступ не включать до локального HTTPS, secure cookies и проверки CSRF/CORS.
-7. Kubo `/repo/gc` остаётся доступен только локальному процессу/loopback. Не проксировать эту команду в Android.
-8. Stop sequence: backend/Kubo child processes terminate; PostgreSQL is stopped with `pg_ctl -m fast`. User data remains in app userData directory.
+The user explicitly approved unsigned Alpha 1 packaging. The installer and portable EXE are unsigned. EDB's PostgreSQL 17.11-5 portable archive may also contain unsigned EXE/DLL files. The staging script retains only PostgreSQL `bin/`, `lib/`, and `share/` runtime trees (excluding debug symbols and manuals); invalid or untrusted signatures stop the build. If files are merely unsigned, the manifest records `NOT_SIGNED_INTERNAL_ALPHA`, and build preflight requires the explicit `NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES=1` opt-in plus `releaseChannel=closed-alpha`.
 
-## Подготовка build-машины
+**Important:** Windows Smart App Control may block unsigned PostgreSQL binaries. This package is for closed Alpha testing only and is not public-release ready. Do not disable Windows security protections merely to make the installer run; report any block so we can select a properly signed PostgreSQL distribution or revise the packaging plan. Commercial Authenticode signing is deferred until public release as agreed.
 
-Требуется Windows 10/11 x64, Node.js 24.22.2 и npm.
+## Build
 
-1. Положить проверенный `node.exe` в `desktop/assets/runtime/`.
-2. Положить полную Windows binary distribution PostgreSQL в `desktop/assets/postgres/` (структура `bin`, `lib`, `share`).
-3. Положить `ipfs.exe` Kubo в `desktop/assets/ipfs/`.
-4. В `secure-disk-backend` выполнить `npm install --omit=dev` на Node.js 24.22.2; сохранить lock-файл в репозитории.
-5. В `desktop` выполнить `npm install`.
-6. Запуск оболочки: `npm start`.
-7. Сборка: `npm run dist:win`.
+The build is reproducible from the feature branch on a Windows x64 runner. In GitHub Actions, run workflow:
 
-Сборку необходимо выполнять на Windows. Этот исходный патч не содержит бинарных third-party runtime assets и не является готовым инсталлятором.
+`NODEX Alpha 1 Windows build`
+
+The workflow stages runtime automatically, installs backend production dependencies with `npm ci --omit=dev`, verifies native Argon2 under the pinned Node.js runtime, installs Electron dependencies with `npm ci`, and executes `npm run dist:win`. It uploads:
+- `NODEX-Alpha-1-Windows-x64` — NSIS installer and portable executable (plus blockmaps and generated runtime manifest).
+
+Workflow artifact retention is 30 days. The build must not be considered complete until the workflow succeeds and both executable artifacts are present.
+
+For a local Windows x64 build:
+
+```powershell
+pwsh -File .\\scripts\\prepare-runtime.ps1
+cd ..\\secure-disk-backend
+npm ci --omit=dev
+cd ..\\desktop
+npm ci
+$env:NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES = '1'
+npm run dist:win
+```
+
+## Current Alpha 1 scope and remaining test gates
+
+1. Android LAN is still intentionally disabled. The backend binds only to loopback. Safe HTTPS, Android certificate trust and WebView cookie/CSRF behavior require a native Android project and device tests; do not bind to `0.0.0.0`.
+2. SMTP is not configured by default. Backend Alpha uses development-mode `DEV_RETURN_VERIFICATION_TOKEN=true` for test registration; it is not a public production server.
+3. Frontend still has ESM/CDN dependencies (Trystero, JSZip, qrcode-generator, html5-qrcode); internet access is required until these are localized and their licenses reviewed.
+4. Kubo 0.43.1 is pinned for closed Alpha compatibility only. Beta must reassess maintenance and choose a supported fork or migration to Helia.
+5. Real Windows 10/11 install, upgrade, first-run DB initialization/migrations, Kubo lifecycle, uninstall/data retention and Smart App Control behavior require the user's device testing after artifact creation.
+6. CI previously passed 71 backend tests and 4 runtime-integrity tests; backend audit reported zero vulnerabilities. Desktop dependency audit reports six moderate `minimatch` advisory items in the Electron Builder dependency tree, no high/critical findings. Do not run `npm audit fix --force` because it proposes a major-version change.
+
+## Safety boundaries
+
+- No changes to existing cryptography, VMK, AES-GCM, Ed25519/X25519, pairing or P2P handshake/trustedPeers.
+- No Kubo API/Gateway LAN exposure; no Android direct Kubo access; Android IPFS operations must use the restricted authenticated/CSRF-protected backend proxy.
+- Existing database migrations and data formats are not rewritten.
+- All implementation work remains on `feature/alpha1-build-preparation`; do not merge this draft PR without review and explicit approval.

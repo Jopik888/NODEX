@@ -1,0 +1,68 @@
+name: NODEX Alpha 1 Windows build
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: nodex-alpha1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Stage verified runtime and build unsigned Alpha installer
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: feature/alpha1-build-preparation
+
+      - name: Set up pinned Node.js for build tooling
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24.22.3
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            secure-disk-backend/package-lock.json
+
+      - name: Download and verify Node.js, PostgreSQL and Kubo runtime
+        shell: pwsh
+        run: ./desktop/scripts/prepare-runtime.ps1
+
+      - name: Install locked backend production dependencies
+        working-directory: secure-disk-backend
+        run: npm ci --omit=dev --no-audit --no-fund
+
+      - name: Verify native Argon2 with pinned Node.js
+        working-directory: secure-disk-backend
+        run: node --input-type=module -e "import('argon2').then(() => console.log('argon2 native module loaded'))"
+
+      - name: Install locked Electron build dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      - name: Run packaging preflight and build compact NSIS installer
+        working-directory: desktop
+        shell: pwsh
+        env:
+          NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES: '1'
+        run: npm run dist:win
+
+      - name: Upload unsigned Alpha NSIS installer
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: NODEX-Alpha-1-Windows-NSIS-x64
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.blockmap
+            desktop/assets/RUNTIME-MANIFEST.json
+          if-no-files-found: error
+          retention-days: 30

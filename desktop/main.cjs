@@ -25,6 +25,7 @@ const MIME = {
 let mainWindow;
 let staticServer;
 let serviceManager;
+let isQuitting = false;
 let bootstrapStatus = { state: 'starting', message: 'Запуск NODEX…', missing: [] };
 
 function getResourcePath(...parts) {
@@ -178,9 +179,16 @@ app.whenReady().then(async () => {
 app.on('before-quit', async (event) => {
   if (!serviceManager) return;
   event.preventDefault();
+  if (isQuitting) return;
+  isQuitting = true;
   try { await serviceManager.stop(); }
   catch (error) { console.error('[NODEX] shutdown error:', error.message); }
-  if (staticServer) await new Promise((resolve) => staticServer.close(resolve));
+  if (staticServer) {
+    await new Promise((resolve) => {
+      const timer = setTimeout(resolve, 3000);
+      staticServer.close(() => { clearTimeout(timer); resolve(); });
+    });
+  }
   app.exit(0);
 });
 

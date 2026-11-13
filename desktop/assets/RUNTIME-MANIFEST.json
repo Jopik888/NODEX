@@ -1,33 +1,42 @@
 {
   "schemaVersion": 1,
   "platform": "win32-x64",
+  "releaseChannel": "closed-alpha",
+  "installerSigning": "unsigned",
+  "generatedAtUtc": null,
   "components": {
     "node": {
-      "version": "24.22.2",
-      "source": "https://nodejs.org/dist/v24.22.2/win-x64/node.exe",
+      "version": "24.22.3",
+      "source": "https://nodejs.org/dist/v24.22.3/node-v24.22.3-win-x64.zip",
+      "archiveFile": "node-v24.22.3-win-x64.zip",
       "file": "runtime/node.exe",
       "sha256": ""
     },
     "postgres": {
       "version": "17.11",
-      "source": "https://www.enterprisedb.com/download-postgresql-binaries",
+      "source": "https://get.enterprisedb.com/postgresql/postgresql-17.11-5-windows-x64-binaries.zip",
+      "archiveFile": "postgresql-17.11-5-windows-x64-binaries.zip",
       "file": "postgres/bin/postgres.exe",
       "sha256": ""
     },
     "kubo": {
       "version": "0.43.1",
       "source": "https://dist.ipfs.tech/kubo/v0.43.1/kubo_v0.43.1_windows-amd64.zip",
+      "archiveFile": "kubo_v0.43.1_windows-amd64.zip",
       "file": "ipfs/ipfs.exe",
       "sha256": ""
     }
   },
   "archiveSha256": {
-    "postgresBinariesZip": "",
-    "kuboWindowsZip": ""
+    "nodeWindowsZip": "e612af99f626ab415ea225af6bce5c971feb448cb5cae250bb1c3fa50c5f7d9f",
+    "postgresBinariesZip": "80379b2c04d51c30225532e0ae04509899141e9957ed096fe749d7fd9df8f82f",
+    "kuboWindowsZip": "c25871516dec4d97ce1d160a26c1e3fdad294cb0eea065c0c0343bcfca86c524"
   },
   "integrityVerification": {
     "nodeShasumsSignature": "PENDING",
     "postgresArchiveSha256": "PENDING",
+    "postgresAuthenticode": "PENDING",
     "kuboArchiveSha256": "PENDING"
-  }
+  },
+  "licenseFiles": []
 }

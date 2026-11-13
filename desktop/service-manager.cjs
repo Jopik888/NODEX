@@ -2,7 +2,8 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { spawn, spawnSync } = require('node:child_process');
+const { spawn, spawnSync, fork } = require('node:child_process');
+const { validateRuntimeManifest } = require('./runtime-integrity.cjs');
 const http = require('node:http');
 const net = require('node:net');
 
@@ -25,9 +26,12 @@ class DesktopServiceManager {
     const backend = this.app.isPackaged
       ? path.join(process.resourcesPath, 'backend')
       : this.getResourcePath('secure-disk-backend');
+    const assetsRoot = this.app.isPackaged ? process.resourcesPath : this.getResourcePath('desktop', 'assets');
     return {
       frontend: this.app.isPackaged ? path.join(process.resourcesPath, 'frontend') : this.getResourcePath('secure-disk'),
       backend,
+      assetsRoot,
+      runtimeManifest: path.join(assetsRoot, 'RUNTIME-MANIFEST.json'),
       node: path.join(resource('runtime'), 'node.exe'),
       postgresBin: path.join(resource('postgres'), 'bin'),
       postgresShare: path.join(resource('postgres'), 'share'),
@@ -38,7 +42,7 @@ class DesktopServiceManager {
   checkAssets() {
     const p = this.paths();
     const required = [
-      ['Node.js runtime (Node 24.22.2 x64)', p.node],
+      ['Node.js runtime (Node 24.22.3 x64)', p.node],
       ['PostgreSQL: bin\\postgres.exe', path.join(p.postgresBin, 'postgres.exe')],
       ['PostgreSQL: bin\\initdb.exe', path.join(p.postgresBin, 'initdb.exe')],
       ['PostgreSQL: bin\\pg_ctl.exe', path.join(p.postgresBin, 'pg_ctl.exe')],
@@ -49,8 +53,16 @@ class DesktopServiceManager {
       ['Backend dependency: argon2', path.join(p.backend, 'node_modules', 'argon2')],
     ];
     const missing = required.filter(([, target]) => !fs.existsSync(target)).map(([label, target]) => ({ label, path: target }));
+    try {
+      const manifest = JSON.parse(fs.readFileSync(p.runtimeManifest, 'utf8'));
+      for (const error of validateRuntimeManifest({ manifest, assetsRoot: p.assetsRoot })) {
+        missing.push({ label: 'Runtime integrity verification', path: error });
+      }
+    } catch (error) {
+      missing.push({ label: 'Runtime integrity verification', path: error.message });
+    }
     const versionChecks = [
-      [p.node, ['--version'], 'v24.22.2', 'Node.js must be exactly v24.22.2'],
+      [p.node, ['--version'], 'v24.22.3', 'Node.js must be exactly v24.22.3'],
       [path.join(p.postgresBin, 'postgres.exe'), ['--version'], 'postgres (PostgreSQL) 17.11', 'PostgreSQL must be exactly 17.11'],
       [p.ipfs, ['--version'], 'ipfs version 0.43.1', 'Kubo must be exactly 0.43.1'],
     ];
@@ -73,7 +85,7 @@ class DesktopServiceManager {
     if (missing.length) {
       return {
         ok: false,
-        message: 'Не найдены локальные runtime-компоненты. Они должны быть включены в дистрибутив NODEX; Docker и ручная установка пользователем не требуются.',
+        message: 'Отсутствуют runtime-компоненты или не пройдена проверка их целостности. Дистрибутив NODEX должен содержать только проверенные файлы; Docker и ручная установка пользователем не требуются.',
         missing,
       };
     }
@@ -120,25 +132,46 @@ class DesktopServiceManager {
   }
 
   async run(executable, args, options = {}) {
+    const { timeoutMs = 120000, ...spawnOptions } = options;
     return new Promise((resolve, reject) => {
-      const child = spawn(executable, args, { windowsHide: true, ...options });
-      let stdout = '', stderr = '';
+      const child = spawn(executable, args, { windowsHide: true, ...spawnOptions });
+      let stdout = '', stderr = '', settled = false;
+      const finish = (error, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (error) reject(error);
+        else resolve(result);
+      };
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch (_) {}
+        finish(new Error(`${path.basename(executable)} timed out after ${timeoutMs} ms`));
+      }, timeoutMs);
       child.stdout?.on('data', (chunk) => { stdout += chunk.toString(); });
       child.stderr?.on('data', (chunk) => { stderr += chunk.toString(); });
-      child.once('error', reject);
+      child.once('error', (error) => finish(error));
       child.once('close', (code) => code === 0
-        ? resolve({ stdout, stderr })
-        : reject(new Error(`${path.basename(executable)} завершился с кодом ${code}: ${(stderr || stdout).slice(-1200)}`)));
+        ? finish(null, { stdout, stderr })
+        : finish(new Error(`${path.basename(executable)} завершился с кодом ${code}: ${(stderr || stdout).slice(-1200)}`)));
     });
   }
 
-  spawnService(name, executable, args, env = {}) {
-    const child = spawn(executable, args, {
-      cwd: path.dirname(executable),
-      env: { ...process.env, ...env },
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  spawnService(name, executable, args, env = {}, { ipc = false, cwd = path.dirname(executable) } = {}) {
+    const child = ipc
+      ? fork(args[0], args.slice(1), {
+        execPath: executable,
+        execArgv: [],
+        cwd,
+        env: { ...process.env, ...env },
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      })
+      : spawn(executable, args, {
+        cwd,
+        env: { ...process.env, ...env },
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
     child.stdout.on('data', (chunk) => console.log(`[${name}] ${chunk.toString().trim()}`));
     child.stderr.on('data', (chunk) => console.error(`[${name}] ${chunk.toString().trim()}`));
     child.once('exit', (code) => {
@@ -181,7 +214,7 @@ class DesktopServiceManager {
       const pwFile = path.join(this.userDataPath, `pg-init-${crypto.randomUUID()}.tmp`);
       await fsp.writeFile(pwFile, this.secrets.dbPassword, { mode: 0o600 });
       try {
-        await this.run(initdb, ['-D', data, '-U', 'nodex', '-A', 'scram-sha-256', '--pwfile', pwFile, '--encoding=UTF8'], {
+        await this.run(initdb, ['-D', data, '-U', 'nodex', '-A', 'scram-sha-256', '--pwfile', pwFile, '--encoding=UTF8', '--locale=C'], {
           env: { ...process.env, PATH: `${p.postgresBin};${process.env.PATH}`, PGSHARE: p.postgresShare },
         });
       } finally { await fsp.rm(pwFile, { force: true }); }
@@ -204,7 +237,7 @@ class DesktopServiceManager {
     const p = this.paths();
     const repo = path.join(this.userDataPath, 'ipfs-repo');
     await fsp.mkdir(repo, { recursive: true });
-    const env = { IPFS_PATH: repo };
+    const env = { ...process.env, IPFS_PATH: repo };
     if (!fs.existsSync(path.join(repo, 'config'))) {
       await this.run(p.ipfs, ['init'], { env });
     }
@@ -234,7 +267,7 @@ class DesktopServiceManager {
       PORT: '3001',
       DATABASE_URL: `postgres://nodex:${encodeURIComponent(this.secrets.dbPassword)}@127.0.0.1:5432/nodex`,
       DATABASE_SSL: 'false',
-      FRONTEND_ORIGINS: 'http://127.0.0.1:4173',
+      FRONTEND_ORIGINS: 'http://127.0.0.1:4173,https://localhost,capacitor://localhost',
       SYNC_ROOM_ENCRYPTION_KEY_BASE64: this.secrets.syncKey,
       SYNC_ROOM_ENCRYPTION_KEY_VERSION: 'alpha1-local-v1',
       DEV_RETURN_VERIFICATION_TOKEN: 'true',
@@ -254,7 +287,7 @@ class DesktopServiceManager {
   async startBackend() {
     const p = this.paths();
     await this.assertPortAvailable(3001, 'NODEX backend');
-    const child = this.spawnService('backend', p.node, [path.join(p.backend, 'src', 'server.js')], this.backendEnv());
+    const child = this.spawnService('backend', p.node, [path.join(p.backend, 'src', 'server.js')], this.backendEnv(), { ipc: true, cwd: p.backend });
     await this.waitFor(async () => {
       if (child.exitCode !== null) throw new Error('Backend process stopped');
       return await new Promise((resolve) => {
@@ -266,23 +299,84 @@ class DesktopServiceManager {
     }, 'NODEX backend', 20000);
   }
 
+  async waitForChildExit(child, timeoutMs = 10000) {
+    if (child.exitCode !== null || child.signalCode !== null) return true;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeoutMs);
+      child.once('close', () => { clearTimeout(timer); resolve(true); });
+    });
+  }
+
+  async requestKuboShutdown() {
+    const p = this.paths();
+    const env = { ...process.env, IPFS_PATH: path.join(this.userDataPath, 'ipfs-repo') };
+
+    // Prefer Kubo's supported CLI shutdown command. Fall back to the loopback
+    // API endpoint for versions/builds where the CLI command is unavailable.
+    try {
+      await this.run(p.ipfs, ['shutdown'], { env, timeoutMs: 8000 });
+      return true;
+    } catch (error) {
+      console.warn('[NODEX] Kubo CLI shutdown failed; trying loopback API:', error.message);
+    }
+
+    return new Promise((resolve) => {
+      const req = http.request({
+        hostname: '127.0.0.1',
+        port: 5001,
+        path: '/api/v0/shutdown',
+        method: 'POST',
+        timeout: 2500,
+      }, (res) => {
+        res.resume();
+        resolve(res.statusCode >= 200 && res.statusCode < 500);
+      });
+      req.on('error', () => resolve(false));
+      req.on('timeout', () => { req.destroy(); resolve(false); });
+      req.end();
+    });
+  }
+
+  async stopChild(name, { kuboShutdown = false } = {}) {
+    const child = this.children.get(name);
+    if (!child) return;
+    if (child.exitCode !== null || child.signalCode !== null) {
+      this.children.delete(name);
+      return;
+    }
+
+    if (kuboShutdown) {
+      await this.requestKuboShutdown();
+    } else if (name === 'backend' && child.connected && typeof child.send === 'function') {
+      try { child.send({ type: 'nodex:shutdown' }); }
+      catch (_) { try { child.kill(); } catch (_) {} }
+    } else {
+      try { child.kill('SIGTERM'); } catch (_) {}
+    }
+
+    const stopped = await this.waitForChildExit(child, kuboShutdown ? 12000 : 10000);
+    if (!stopped && child.exitCode === null && child.signalCode === null) {
+      try { child.kill(); } catch (_) {}
+      await this.waitForChildExit(child, 5000);
+    }
+    this.children.delete(name);
+  }
+
   async stop() {
     this.stopping = true;
-    const running = [...this.children.entries()];
-    for (const [, child] of running) {
-      try { if (child.exitCode === null) child.kill(); } catch (_) {}
+    // Stop API consumers first, then ask Kubo to shut down through its loopback API.
+    await this.stopChild('backend');
+    await this.stopChild('ipfs', { kuboShutdown: true });
+
+    for (const [name] of [...this.children.entries()]) {
+      await this.stopChild(name);
     }
-    await Promise.all(running.map(([, child]) => new Promise((resolve) => {
-      if (child.exitCode !== null || child.signalCode !== null) return resolve();
-      const timer = setTimeout(resolve, 5000);
-      child.once('close', () => { clearTimeout(timer); resolve(); });
-    })));
-    this.children.clear();
+
     if (this.startedPostgres) {
       const p = this.paths();
       await this.run(path.join(p.postgresBin, 'pg_ctl.exe'), [
-        '-D', path.join(this.userDataPath, 'postgres-data'), '-m', 'fast', '-w', 'stop',
-      ]).catch((error) => console.error('[NODEX] PostgreSQL stop:', error.message));
+        '-D', path.join(this.userDataPath, 'postgres-data'), '-m', 'fast', '-t', '10', '-w', 'stop',
+      ], { timeoutMs: 15000 }).catch((error) => console.error('[NODEX] PostgreSQL stop:', error.message));
       this.startedPostgres = false;
     }
   }

@@ -1,0 +1,88 @@
+name: NODEX Alpha 1 validation
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: nodex-alpha1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend install, syntax and tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24.22.3
+          cache: npm
+          cache-dependency-path: secure-disk-backend/package-lock.json
+
+      - name: Install locked backend dependencies
+        working-directory: secure-disk-backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit backend dependencies
+        working-directory: secure-disk-backend
+        run: npm audit --audit-level=high
+
+      - name: Check JavaScript syntax
+        working-directory: secure-disk-backend
+        run: npm run check
+
+      - name: Run backend tests
+        working-directory: secure-disk-backend
+        run: npm test
+
+      - name: Verify native Argon2 module loads
+        working-directory: secure-disk-backend
+        run: node --input-type=module -e "import('argon2').then(() => console.log('argon2 native module loaded'))"
+
+  desktop:
+    name: Desktop install and syntax
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up pinned Node.js
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 24.22.3
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install locked desktop dependencies
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit desktop and build dependencies
+        working-directory: desktop
+        run: npm audit --audit-level=high
+
+      - name: Check Electron entry points
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          node --check main.cjs
+          node --check preload.cjs
+          node --check service-manager.cjs
+          node --check setup-renderer.js
+          node --check preflight.cjs
+          node --check runtime-integrity.cjs
+          node --check service-manager.test.cjs
+          node --test runtime-integrity.test.cjs service-manager.test.cjs
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/prepare-runtime.ps1', [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) { $parseErrors | ForEach-Object { Write-Error $_.Message }; exit 1 }
