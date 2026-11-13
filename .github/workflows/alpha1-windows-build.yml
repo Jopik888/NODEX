@@ -49,17 +49,17 @@ jobs:
         working-directory: desktop
         run: npm ci --no-audit --no-fund
 
-      - name: Run packaging preflight, build NSIS installer and portable executable
+      - name: Run packaging preflight and build compact NSIS installer
         working-directory: desktop
         shell: pwsh
         env:
           NODEX_ALPHA_ALLOW_UNSIGNED_POSTGRES: '1'
         run: npm run dist:win
 
-      - name: Upload unsigned Alpha installer and portable build
+      - name: Upload unsigned Alpha NSIS installer
         uses: actions/upload-artifact@v4.6.2
         with:
-          name: NODEX-Alpha-1-Windows-x64
+          name: NODEX-Alpha-1-Windows-NSIS-x64
           path: |
             desktop/dist/*.exe
             desktop/dist/*.blockmap
