@@ -212,6 +212,12 @@ try {
   if (Test-Path -LiteralPath $PgxsDirectory) {
     Remove-Item -LiteralPath $PgxsDirectory -Recurse -Force
   }
+  # Translation catalogs are optional; PostgreSQL falls back to English messages
+  # when a locale catalog is absent. Keep timezone data and SQL support files intact.
+  $PostgresLocaleDirectory = Join-Path $Assets 'postgres/share/locale'
+  if (Test-Path -LiteralPath $PostgresLocaleDirectory) {
+    Remove-Item -LiteralPath $PostgresLocaleDirectory -Recurse -Force
+  }
   foreach ($requiredExecutable in $RequiredPostgresExecutables) {
     if (!(Test-Path -LiteralPath (Join-Path $Assets "postgres/bin/$requiredExecutable"))) {
       throw "PostgreSQL runtime pruning removed a required executable: $requiredExecutable"
