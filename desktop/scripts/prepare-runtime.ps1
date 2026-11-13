@@ -199,6 +199,26 @@ try {
       Remove-Item -LiteralPath $documentation -Recurse -Force
     }
   }
+  # Keep only the PostgreSQL command-line tools required by the desktop lifecycle.
+  # DLLs and extension modules are retained; removing them can break server startup
+  # or installed SQL extensions. Development-only PGXS files are not needed at runtime.
+  $RequiredPostgresExecutables = @('postgres.exe', 'initdb.exe', 'pg_ctl.exe', 'createdb.exe')
+  $RemovedPostgresExecutables = @(Get-ChildItem -LiteralPath (Join-Path $Assets 'postgres/bin') -Filter '*.exe' -File |
+    Where-Object { $_.Name -notin $RequiredPostgresExecutables })
+  foreach ($unusedExecutable in $RemovedPostgresExecutables) {
+    Remove-Item -LiteralPath $unusedExecutable.FullName -Force
+  }
+  $PgxsDirectory = Join-Path $Assets 'postgres/lib/pgxs'
+  if (Test-Path -LiteralPath $PgxsDirectory) {
+    Remove-Item -LiteralPath $PgxsDirectory -Recurse -Force
+  }
+  foreach ($requiredExecutable in $RequiredPostgresExecutables) {
+    if (!(Test-Path -LiteralPath (Join-Path $Assets "postgres/bin/$requiredExecutable"))) {
+      throw "PostgreSQL runtime pruning removed a required executable: $requiredExecutable"
+    }
+  }
+  Write-Host ("Removed {0} unused PostgreSQL command-line executables and PGXS development files." -f $RemovedPostgresExecutables.Count)
+
   $PostgresExeHash = Get-Sha256 (Join-Path $Assets 'postgres/bin/postgres.exe')
 
   $PgPeFiles = @(Get-ChildItem -LiteralPath @((Join-Path $Assets 'postgres/bin'), (Join-Path $Assets 'postgres/lib')) -Recurse -File |
